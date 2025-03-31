@@ -7,10 +7,15 @@ use serde::Serialize;
 
 #[derive(Serialize)]
 struct Kanji {
-    meaning: String,
+    character: String,
+    stroke_count: i32,
+    grade: i32,
+    jlpt_level: i32,
+    frequency: i32,
     onyomi: String,
     kunyomi: String,
-    jlpt_level: i32,
+    meanings: Vec<String>,
+    nanori: Vec<String>
 }
 
 #[command]
@@ -23,7 +28,7 @@ fn get_kanji(character: String) -> Result<Kanji, String> {
     })?;
 
     let mut stmt = conn.prepare(
-        "SELECT meaning, onyomi, kunyomi, jlpt_level FROM kanji WHERE character = ?1",
+        "SELECT * FROM kanji WHERE character = ?1",
     ).map_err(|e| {
         println!("Prepare error: {:?}", e);
         e.to_string()
@@ -31,10 +36,15 @@ fn get_kanji(character: String) -> Result<Kanji, String> {
 
     let kanji = stmt.query_row([character], |row| {
         Ok(Kanji {
-            meaning: row.get(0)?,
-            onyomi: row.get(1)?,
-            kunyomi: row.get(2)?,
+            character: row.get(0)?,
+            stroke_count: row.get(1)?,
+            grade: row.get(2)?,
             jlpt_level: row.get(3)?,
+            frequency: row.get(4)?,
+            onyomi: row.get(5)?,
+            kunyomi: row.get(6)?,
+            meanings: row.get::<_, String>(7)?.split(';').map(String::from).collect(),
+            nanori: row.get::<_, String>(8)?.split(',').map(String::from).collect()
         })
     }).map_err(|e| {
         println!("Query error: {:?}", e);

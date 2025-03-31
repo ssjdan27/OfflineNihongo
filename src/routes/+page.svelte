@@ -1,30 +1,46 @@
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core';
 
+  let submitted_kanji = '';
   let character = '';
-  let meaning = '';
+  let stroke_count = '';
+  let grade = '';
+  let jlpt_level = '';
+  let frequency = '';
   let onyomi = '';
   let kunyomi = '';
-  let jlpt = '';
+  let meanings: string[] = [];
+  let nanori: string[] = [];
   let error = '';
 
   async function searchKanji(event: Event) {
     event.preventDefault();
     error = '';
-    meaning = onyomi = kunyomi = jlpt = '';
+    meanings = [];
+    onyomi = kunyomi = jlpt_level = '';
 
     try {
       const result = await invoke<{
-        meaning: string;
+        character: string,
+        stroke_count: number;
+        grade: number;
+        jlpt_level: number;
+        frequency: number;
         onyomi: string;
         kunyomi: string;
-        jlpt_level: number;
-      }>('get_kanji', { character });
+        meanings: string[];
+        nanori: string[];
+      }>('get_kanji', { character: submitted_kanji });
 
-      meaning = result.meaning;
+      character = result.character;
+      stroke_count = result.stroke_count.toString();
+      grade = result.grade.toString();
+      jlpt_level = result.jlpt_level.toString();
+      frequency = result.frequency.toString();
       onyomi = result.onyomi;
       kunyomi = result.kunyomi;
-      jlpt = result.jlpt_level.toString();
+      meanings = result.meanings;
+      nanori = result.nanori;
     } catch (e) {
       error = 'Kanji not found or error occurred.';
     }
@@ -36,7 +52,7 @@
 
   <form on:submit={searchKanji}>
     <input
-      bind:value={character}
+      bind:value={submitted_kanji}
       placeholder="Enter a kanji (e.g. 日)"
       required
     />
@@ -45,13 +61,27 @@
 
   {#if error}
     <p style="color: red;">{error}</p>
-  {:else if meaning}
+  {:else if meanings.length > 0}
     <div class="result">
       <h2>{character}</h2>
-      <p><strong>Meaning:</strong> {meaning}</p>
-      <p><strong>On'yomi:</strong> {onyomi}</p>
-      <p><strong>Kun'yomi:</strong> {kunyomi}</p>
-      <p><strong>JLPT Level:</strong> {jlpt}</p>
+      <p><strong>Stroke Count: {stroke_count}</strong></p>
+      <p><strong>Grade: {grade}</strong></p>
+      <p><strong>JLPT Level: {jlpt_level}</strong></p>
+      <p><strong>Frequency: {frequency}</strong></p>
+      <p><strong>Onyomi: {onyomi}</strong></p>
+      <p><strong>Kunyomi: {kunyomi}</strong></p>
+      <p><strong>Meanings:</strong></p>
+      <ul>
+        {#each meanings as meaning}
+          <li>{meaning}</li>
+        {/each}
+      </ul>
+      <p><strong>Nanori:</strong></p>
+      <ul>
+        {#each nanori as name}
+          <li>{name}</li>
+        {/each}
+      </ul>
     </div>
   {/if}
 </main>
