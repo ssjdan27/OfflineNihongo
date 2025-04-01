@@ -11,6 +11,7 @@
   <p>This app helps you look up kanji and learn Japanese offline.</p>
 
   <button on:click={goToLookup}>Go to Kanji Lookup</button>
+  <button on:click={() => goto('/kana_view')}>Go to Kana View</button>
 </main>
 
 <style>
