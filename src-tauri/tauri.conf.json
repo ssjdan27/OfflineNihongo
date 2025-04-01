@@ -34,7 +34,8 @@
     ],
     "resources": [
       "data/kanji.db",
-      "data/kana.json"
+      "data/kana.json",
+      "data/kanji_svg/*"
     ]
   }
 }
