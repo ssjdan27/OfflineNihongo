@@ -2,32 +2,92 @@
     import { onMount } from 'svelte';
     import { goto } from '$app/navigation';
     import { invoke } from '@tauri-apps/api/core';
+    import './kana-view.css';
 
     type Kana = {
-  kana: string;
-  romaji: string;
-  script: "Hiragana" | "Katakana";
-  row: string;
-  col: string;
-};
+      kana: string;
+      romaji: string;
+      script: "Hiragana" | "Katakana";
+      row: string;
+      col: string;
+    };
 
-let hiraganaList: Kana[] = [];
-let katakanaList: Kana[] = [];
-let activeTab: "Hiragana" | "Katakana" = "Hiragana";
+    let hiraganaList: Kana[] = [];
+    let katakanaList: Kana[] = [];
+    let activeTab: "Hiragana" | "Katakana" = "Hiragana";
 
-onMount(async () => {
-  try {
-    const [hira, kata] = await invoke<[Kana[], Kana[]]>("get_kana");
-    hiraganaList = hira;
-    katakanaList = kata;
-  } catch (err) {
-    console.error("Failed to load kana:", err);
-  }
-});
+    // Define the traditional kana chart structure
+    const kanaChart: Record<'hiragana' | 'katakana' | 'romaji', string[][]> = {
+      hiragana: [
+        ['あ', 'い', 'う', 'え', 'お'],
+        ['か', 'き', 'く', 'け', 'こ'],
+        ['が', 'ぎ', 'ぐ', 'げ', 'ご'],
+        ['さ', 'し', 'す', 'せ', 'そ'],
+        ['ざ', 'じ', 'ず', 'ぜ', 'ぞ'],
+        ['た', 'ち', 'つ', 'て', 'と'],
+        ['だ', 'ぢ', 'づ', 'で', 'ど'],
+        ['な', 'に', 'ぬ', 'ね', 'の'],
+        ['は', 'ひ', 'ふ', 'へ', 'ほ'],
+        ['ば', 'び', 'ぶ', 'べ', 'ぼ'],
+        ['ぱ', 'ぴ', 'ぷ', 'ぺ', 'ぽ'],
+        ['ま', 'み', 'む', 'め', 'も'],
+        ['や', '', 'ゆ', '', 'よ'],
+        ['ら', 'り', 'る', 'れ', 'ろ'],
+        ['わ', '', '', '', 'を'],
+        ['ん', '', '', '', '']
+      ],
+      katakana: [
+        ['ア', 'イ', 'ウ', 'エ', 'オ'],
+        ['カ', 'キ', 'ク', 'ケ', 'コ'],
+        ['ガ', 'ギ', 'グ', 'ゲ', 'ゴ'],
+        ['サ', 'シ', 'ス', 'セ', 'ソ'],
+        ['ザ', 'ジ', 'ズ', 'ゼ', 'ゾ'],
+        ['タ', 'チ', 'ツ', 'テ', 'ト'],
+        ['ダ', 'ヂ', 'ヅ', 'デ', 'ド'],
+        ['ナ', 'ニ', 'ヌ', 'ネ', 'ノ'],
+        ['ハ', 'ヒ', 'フ', 'ヘ', 'ホ'],
+        ['バ', 'ビ', 'ブ', 'ベ', 'ボ'],
+        ['パ', 'ピ', 'プ', 'ペ', 'ポ'],
+        ['マ', 'ミ', 'ム', 'メ', 'モ'],
+        ['ヤ', '', 'ユ', '', 'ヨ'],
+        ['ラ', 'リ', 'ル', 'レ', 'ロ'],
+        ['ワ', '', '', '', 'ヲ'],
+        ['ン', '', '', '', '']
+      ],
+      romaji: [
+        ['a', 'i', 'u', 'e', 'o'],
+        ['ka', 'ki', 'ku', 'ke', 'ko'],
+        ['ga', 'gi', 'gu', 'ge', 'go'],
+        ['sa', 'shi', 'su', 'se', 'so'],
+        ['za', 'ji', 'zu', 'ze', 'zo'],
+        ['ta', 'chi', 'tsu', 'te', 'to'],
+        ['da', 'ji', 'zu', 'de', 'do'],
+        ['na', 'ni', 'nu', 'ne', 'no'],
+        ['ha', 'hi', 'fu', 'he', 'ho'],
+        ['ba', 'bi', 'bu', 'be', 'bo'],
+        ['pa', 'pi', 'pu', 'pe', 'po'],
+        ['ma', 'mi', 'mu', 'me', 'mo'],
+        ['ya', '', 'yu', '', 'yo'],
+        ['ra', 'ri', 'ru', 're', 'ro'],
+        ['wa', '', '', '', 'wo'],
+        ['n', '', '', '', '']
+      ]
+    };
 
-  
-    function showDetails(k: Kana) {
-      alert(`${k.kana} (${k.romaji}) - ${k.script}`);
+    onMount(async () => {
+      try {
+        const [hira, kata] = await invoke<[Kana[], Kana[]]>("get_kana");
+        hiraganaList = hira;
+        katakanaList = kata;
+      } catch (err) {
+        console.error("Failed to load kana:", err);
+      }
+    });
+
+    function showDetails(kana: string, romaji: string) {
+      if (kana) {
+        alert(`${kana} (${romaji}) - ${activeTab}`);
+      }
     }
     
     function goToHome() {
@@ -54,90 +114,45 @@ onMount(async () => {
     </button>
   </div>
     
-  <main class="kana-grid">
-    {#each activeTab === "Hiragana" ? hiraganaList : katakanaList as k}
-      <button class="kana-card" on:click={() => showDetails(k)} type="button" aria-label={`Details for ${k.kana}`}>
-        <div class="kana-char">{k.kana}</div>
-        <div class="romaji">{k.romaji}</div>
-      </button>
-    {/each}
+  <main class="kana-chart-container">
+    <!-- Column headers -->
+    <div class="chart-header">
+      <div class="header-cell"></div>
+      <div class="header-cell">a</div>
+      <div class="header-cell">i</div>
+      <div class="header-cell">u</div>
+      <div class="header-cell">e</div>
+      <div class="header-cell">o</div>
+    </div>
+    
+    <!-- Kana chart grid -->
+    <div class="kana-chart">
+      {#each kanaChart[activeTab.toLowerCase() as 'hiragana' | 'katakana'] as row, rowIndex}
+        <div class="kana-row">
+          <!-- Row label (first consonant of each row) -->
+          <div class="row-label">
+            {#if rowIndex < kanaChart.romaji.length && kanaChart.romaji[rowIndex][0]}
+              {kanaChart.romaji[rowIndex][0].charAt(0)}
+            {/if}
+          </div>
+          
+          <!-- Kana characters -->
+          {#each row as kana, colIndex}
+            <div class="kana-cell">
+              {#if kana}
+                <button 
+                  class="kana-button" 
+                  on:click={() => showDetails(kana, kanaChart.romaji[rowIndex][colIndex])}
+                  type="button" 
+                  aria-label={`${kana} (${kanaChart.romaji[rowIndex][colIndex]})`}
+                >
+                  <div class="kana-char">{kana}</div>
+                  <div class="romaji">{kanaChart.romaji[rowIndex][colIndex]}</div>
+                </button>
+              {/if}
+            </div>
+          {/each}
+        </div>
+      {/each}
+    </div>
   </main>
-    
-  <style>
-    .nav-bar {
-      display: flex;
-      justify-content: flex-start;
-      padding: 1rem;
-    }
-    
-    .home-button {
-      padding: 0.5rem 1rem;
-      font-size: 1rem;
-      background-color: #f3f3f3;
-      border: 1px solid #ccc;
-      border-radius: 6px;
-      cursor: pointer;
-    }
-    
-    .home-button:hover {
-      background-color: #e0e0e0;
-    }
-  
-    .tab-container {
-      display: flex;
-      justify-content: center;
-      gap: 1rem;
-      margin: 2rem 0 1rem;
-    }
-    
-    button {
-      padding: 0.5rem 1rem;
-      font-size: 1rem;
-      border: 2px solid #ccc;
-      background: white;
-      cursor: pointer;
-      border-radius: 6px;
-      transition: background 0.2s;
-    }
-    
-    button:hover {
-      background-color: #f0f0f0;
-    }
-    
-    .active-tab {
-      background-color: #396cd8;
-      color: white;
-      border-color: #396cd8;
-    }
-    
-    .kana-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
-      gap: 1rem;
-      padding: 2rem;
-    }
-    
-    .kana-card {
-      text-align: center;
-      padding: 1rem;
-      border: 1px solid #ccc;
-      border-radius: 8px;
-      cursor: pointer;
-      background: #fff;
-      box-shadow: 0 1px 5px rgba(0,0,0,0.1);
-      transition: transform 0.2s ease;
-    }
-    
-    .kana-card:hover {
-      transform: scale(1.05);
-    }
-    
-    .kana-char {
-      font-size: 2rem;
-    }
-    
-    .romaji {
-      font-size: 0.9rem;
-      color: #555;
-    }
-  </style>
