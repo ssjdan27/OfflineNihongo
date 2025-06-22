@@ -12,8 +12,64 @@ struct Kanji {
     frequency: i32,
     onyomi: String,
     kunyomi: String,
-    meanings: Vec<String>,
-    nanori: Vec<String>,
+    meanings: String,
+    nanori: String,
+}
+
+#[command]
+fn get_all_kanji(app: AppHandle) -> Result<Vec<Kanji>, String> {
+    println!("Fetching all kanji from database");
+
+    // Find the correct path to the bundled resource
+    let db_path: PathBuf = app
+        .path()
+        .resource_dir()
+        .map_err(|e| {
+            println!("Resource dir error: {:?}", e);
+            e.to_string()
+        })?
+        .join("data/kanji.db");
+
+    println!("Resolved DB path: {:?}", db_path);
+
+    let conn = Connection::open(db_path).map_err(|e| {
+        println!("DB open error: {:?}", e);
+        e.to_string()
+    })?;
+
+    let mut stmt = conn
+        .prepare("SELECT character, stroke_count, grade, jlpt_level, frequency, onyomi, kunyomi, meanings, nanori FROM kanji")
+        .map_err(|e| {
+            println!("Prepare error: {:?}", e);
+            e.to_string()
+        })?;
+
+    let kanji_iter = stmt
+        .query_map([], |row| {
+            Ok(Kanji {
+                character: row.get(0)?,
+                stroke_count: row.get(1)?,
+                grade: row.get(2)?,
+                jlpt_level: row.get(3)?,
+                frequency: row.get(4)?,
+                onyomi: row.get::<_, String>(5).unwrap_or_default(),
+                kunyomi: row.get::<_, String>(6).unwrap_or_default(),
+                meanings: row.get::<_, String>(7).unwrap_or_default(),
+                nanori: row.get::<_, String>(8).unwrap_or_default(),
+            })
+        })
+        .map_err(|e| {
+            println!("Query error: {:?}", e);
+            e.to_string()
+        })?;
+
+    let mut kanji_list = Vec::new();
+    for kanji in kanji_iter {
+        kanji_list.push(kanji.map_err(|e| e.to_string())?);
+    }
+
+    println!("Found {} kanji in database", kanji_list.len());
+    Ok(kanji_list)
 }
 
 #[command]
@@ -52,18 +108,10 @@ fn get_kanji(character: String, app: AppHandle) -> Result<Kanji, String> {
                 grade: row.get(2)?,
                 jlpt_level: row.get(3)?,
                 frequency: row.get(4)?,
-                onyomi: row.get(5)?,
-                kunyomi: row.get(6)?,
-                meanings: row
-                    .get::<_, String>(7)?
-                    .split(';')
-                    .map(String::from)
-                    .collect(),
-                nanori: row
-                    .get::<_, String>(8)?
-                    .split(',')
-                    .map(String::from)
-                    .collect(),
+                onyomi: row.get::<_, String>(5).unwrap_or_default(),
+                kunyomi: row.get::<_, String>(6).unwrap_or_default(),
+                meanings: row.get::<_, String>(7).unwrap_or_default(),
+                nanori: row.get::<_, String>(8).unwrap_or_default(),
             })
         })
         .map_err(|e| {
@@ -114,7 +162,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
-        .invoke_handler(tauri::generate_handler![get_kanji, get_kanji_svg])
+        .invoke_handler(tauri::generate_handler![get_kanji, get_all_kanji, get_kanji_svg])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

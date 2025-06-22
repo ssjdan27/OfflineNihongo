@@ -12,6 +12,7 @@
 
   <div class="button-group">
     <button on:click={goToLookup}>Go to Kanji Lookup</button>
+    <button on:click={() => goto('/kanji_view')}>Browse Kanji Database</button>
     <button on:click={() => goto('/kana_view')}>Go to Kana View</button>
     <button on:click={() => goto('/settings')}>Settings</button>
   </div>
