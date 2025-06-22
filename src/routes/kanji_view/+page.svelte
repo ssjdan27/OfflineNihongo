@@ -22,12 +22,14 @@
   let error = '';
   let activeTab = 'all';
   let activeJlptTab = 'all';
+  let activeStrokeTab = 'all';
 
   const tabs = [
     { id: 'all', label: 'All Kanji' },
     { id: 'frequent', label: 'Top 1000 Frequent' },
     { id: 'grade', label: 'By Grade' },
-    { id: 'jlpt', label: 'By JLPT Level' }
+    { id: 'jlpt', label: 'By JLPT Level' },
+    { id: 'strokes', label: 'By Stroke Count' }
   ];
 
   const jlptTabs = [
@@ -36,6 +38,14 @@
     { id: '2', label: 'JLPT N2' },
     { id: '3', label: 'JLPT N3' },
     { id: '4', label: 'JLPT N4' }
+  ];
+
+  const strokeTabs = [
+    { id: 'all', label: 'All Strokes' },
+    { id: '1-5', label: '1-5 Strokes' },
+    { id: '6-10', label: '6-10 Strokes' },
+    { id: '11-20', label: '11-20 Strokes' },
+    { id: '20+', label: '20+ Strokes' }
   ];
 
   onMount(async () => {
@@ -95,6 +105,33 @@
           return (a.frequency || 9999) - (b.frequency || 9999);
         });
         break;
+      
+      case 'strokes':
+        // Filter by stroke count range if specified
+        if (activeStrokeTab !== 'all') {
+          switch (activeStrokeTab) {
+            case '1-5':
+              filtered = filtered.filter(k => k.stroke_count >= 1 && k.stroke_count <= 5);
+              break;
+            case '6-10':
+              filtered = filtered.filter(k => k.stroke_count >= 6 && k.stroke_count <= 10);
+              break;
+            case '11-20':
+              filtered = filtered.filter(k => k.stroke_count >= 11 && k.stroke_count <= 20);
+              break;
+            case '20+':
+              filtered = filtered.filter(k => k.stroke_count > 20);
+              break;
+          }
+        }
+        // Sort by stroke count, then by frequency
+        filtered.sort((a, b) => {
+          if (a.stroke_count !== b.stroke_count) {
+            return a.stroke_count - b.stroke_count;
+          }
+          return (a.frequency || 9999) - (b.frequency || 9999);
+        });
+        break;
     }
 
     filteredKanji = filtered;
@@ -105,11 +142,19 @@
     if (tabId !== 'jlpt') {
       activeJlptTab = 'all';
     }
+    if (tabId !== 'strokes') {
+      activeStrokeTab = 'all';
+    }
     filterKanji();
   }
 
   function setActiveJlptTab(tabId: string) {
     activeJlptTab = tabId;
+    filterKanji();
+  }
+
+  function setActiveStrokeTab(tabId: string) {
+    activeStrokeTab = tabId;
     filterKanji();
   }
 
@@ -169,6 +214,20 @@
     </div>
   {/if}
 
+  <!-- Stroke count sub-tabs -->
+  {#if activeTab === 'strokes'}
+    <div class="sub-tab-container">
+      {#each strokeTabs as tab}
+        <button
+          class="sub-tab {activeStrokeTab === tab.id ? 'active' : ''}"
+          on:click={() => setActiveStrokeTab(tab.id)}
+        >
+          {tab.label}
+        </button>
+      {/each}
+    </div>
+  {/if}
+
   <!-- Content -->
   {#if loading}
     <div class="loading">Loading kanji...</div>
@@ -181,6 +240,18 @@
         (Top 1000 most frequent)
       {:else if activeTab === 'grade'}
         (Sorted by grade)
+      {:else if activeTab === 'strokes'}
+        {#if activeStrokeTab === 'all'}
+          (Sorted by stroke count)
+        {:else if activeStrokeTab === '1-5'}
+          (1-5 strokes)
+        {:else if activeStrokeTab === '6-10'}
+          (6-10 strokes)
+        {:else if activeStrokeTab === '11-20'}
+          (11-20 strokes)
+        {:else if activeStrokeTab === '20+'}
+          (20+ strokes)
+        {/if}
       {:else if activeTab === 'jlpt'}
         {#if activeJlptTab === 'all'}
           (All JLPT levels)
