@@ -35,8 +35,7 @@
     { id: '1', label: 'JLPT N1' },
     { id: '2', label: 'JLPT N2' },
     { id: '3', label: 'JLPT N3' },
-    { id: '4', label: 'JLPT N4' },
-    { id: '1-4', label: 'JLPT N1-N4' }
+    { id: '4', label: 'JLPT N4' }
   ];
 
   onMount(async () => {
@@ -66,7 +65,7 @@
         break;
       
       case 'frequent':
-        // Top 1000 most frequent (frequency > 0), sorted by frequency ascending
+        // Top 1000 most frequent (frequency > 0), sorted by frequency ascending - we leave out those with frequency 0 for now since they don't seem to have a categorization
         filtered = filtered
           .filter(k => k.frequency > 0)
           .sort((a, b) => a.frequency - b.frequency)
@@ -74,18 +73,16 @@
         break;
       
       case 'grade':
-        // Sort by grade, excluding grade 0
+        // Sort by grade, excluding grade 0 since those are not categorized
         filtered = filtered
           .filter(k => k.grade > 0)
           .sort((a, b) => a.grade - b.grade);
         break;
       
       case 'jlpt':
-        // Filter by JLPT level
+        // Filter by JLPT level - leave out those with jlpt_level 0 since they are not categorized
         if (activeJlptTab === 'all') {
           filtered = filtered.filter(k => k.jlpt_level > 0);
-        } else if (activeJlptTab === '1-4') {
-          filtered = filtered.filter(k => k.jlpt_level >= 1 && k.jlpt_level <= 4);
         } else {
           const level = parseInt(activeJlptTab);
           filtered = filtered.filter(k => k.jlpt_level === level);
@@ -187,8 +184,6 @@
       {:else if activeTab === 'jlpt'}
         {#if activeJlptTab === 'all'}
           (All JLPT levels)
-        {:else if activeJlptTab === '1-4'}
-          (JLPT N1-N4)
         {:else}
           (JLPT N{activeJlptTab})
         {/if}

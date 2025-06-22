@@ -7,14 +7,16 @@
 .home-button {
   padding: 0.5rem 1rem;
   font-size: 1rem;
-  background-color: #f3f3f3;
-  border: 1px solid #ccc;
+  background-color: var(--button-bg, #f3f3f3);
+  border: 1px solid var(--button-border, #ccc);
   border-radius: 6px;
   cursor: pointer;
+  color: var(--text-color, #000);
 }
 
 .home-button:hover {
-  background-color: #e0e0e0;
+  background-color: var(--button-hover-bg, #e0e0e0);
+  color: var(--text-color, #000);
 }
 
 .tab-container {
@@ -34,7 +36,7 @@
 .section-title {
   text-align: center;
   margin: 1rem 0;
-  color: #666;
+  color: var(--text-color, #000);
 }
 
 .section-title h2 {
@@ -46,15 +48,17 @@
 button {
   padding: 0.5rem 1rem;
   font-size: 1rem;
-  border: 2px solid #ccc;
-  background: white;
+  border: 2px solid var(--border-color, #ccc);
+  background: var(--section-bg, white);
   cursor: pointer;
   border-radius: 6px;
   transition: background 0.2s;
+  color: var(--text-color, #000);
 }
 
 button:hover {
-  background-color: #f0f0f0;
+  background-color: var(--button-hover-bg, #f0f0f0);
+  color: var(--text-color, #000);
 }
 
 .active-tab {
@@ -85,7 +89,7 @@ button:hover {
   text-align: center;
   font-weight: bold;
   font-size: 1.1rem;
-  color: #666;
+  color: var(--text-muted, #666);
   padding: 0.5rem;
   min-width: 60px;
   flex: 1;
@@ -113,7 +117,7 @@ button:hover {
   text-align: center;
   font-weight: bold;
   font-size: 1.1rem;
-  color: #666;
+  color: var(--text-muted, #666);
   padding: 0.5rem;
   min-width: 60px;
   max-width: 60px;
@@ -138,19 +142,20 @@ button:hover {
   justify-content: center;
   text-align: center;
   padding: 0.5rem;
-  border: 1px solid #ddd;
+  border: 1px solid var(--border-color, #ddd);
   border-radius: 8px;
   cursor: pointer;
-  background: #fff;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  background: var(--section-bg, #fff);
+  box-shadow: 0 1px 3px var(--shadow-color, rgba(0,0,0,0.1));
   transition: all 0.2s ease;
   min-height: 70px;
+  color: var(--text-color, #000);
 }
 
 .kana-button:hover {
   transform: scale(1.05);
-  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
-  background-color: #f8f9fa;
+  box-shadow: 0 2px 6px var(--shadow-color, rgba(0,0,0,0.15));
+  background-color: var(--button-hover-bg, #f8f9fa);
 }
 
 .kana-char {
@@ -162,7 +167,7 @@ button:hover {
 
 .romaji {
   font-size: 0.8rem;
-  color: #666;
+  color: var(--text-muted, #666);
   font-weight: normal;
 }
 

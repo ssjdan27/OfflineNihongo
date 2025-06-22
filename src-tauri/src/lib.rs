@@ -16,6 +16,19 @@ struct Kanji {
     nanori: String,
 }
 
+#[derive(Serialize)]
+struct KanjiLookup {
+    character: String,
+    stroke_count: i32,
+    grade: i32,
+    jlpt_level: i32,
+    frequency: i32,
+    onyomi: String,
+    kunyomi: String,
+    meanings: Vec<String>,
+    nanori: Vec<String>,
+}
+
 #[command]
 fn get_all_kanji(app: AppHandle) -> Result<Vec<Kanji>, String> {
     println!("Fetching all kanji from database");
@@ -73,7 +86,7 @@ fn get_all_kanji(app: AppHandle) -> Result<Vec<Kanji>, String> {
 }
 
 #[command]
-fn get_kanji(character: String, app: AppHandle) -> Result<Kanji, String> {
+fn get_kanji(character: String, app: AppHandle) -> Result<KanjiLookup, String> {
     println!("Searching for kanji: {}", character);
 
     // Find the correct path to the bundled resource
@@ -102,7 +115,24 @@ fn get_kanji(character: String, app: AppHandle) -> Result<Kanji, String> {
 
     let kanji = stmt
         .query_row([character], |row| {
-            Ok(Kanji {
+            let meanings_str: String = row.get::<_, String>(7).unwrap_or_default();
+            let nanori_str: String = row.get::<_, String>(8).unwrap_or_default();
+            
+            // Split meanings by semicolon and filter out empty strings
+            let meanings: Vec<String> = meanings_str
+                .split(';')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+                
+            // Split nanori by comma and filter out empty strings
+            let nanori: Vec<String> = nanori_str
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+
+            Ok(KanjiLookup {
                 character: row.get(0)?,
                 stroke_count: row.get(1)?,
                 grade: row.get(2)?,
@@ -110,8 +140,8 @@ fn get_kanji(character: String, app: AppHandle) -> Result<Kanji, String> {
                 frequency: row.get(4)?,
                 onyomi: row.get::<_, String>(5).unwrap_or_default(),
                 kunyomi: row.get::<_, String>(6).unwrap_or_default(),
-                meanings: row.get::<_, String>(7).unwrap_or_default(),
-                nanori: row.get::<_, String>(8).unwrap_or_default(),
+                meanings,
+                nanori,
             })
         })
         .map_err(|e| {

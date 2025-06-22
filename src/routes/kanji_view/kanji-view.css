@@ -50,13 +50,14 @@
   border: 1px solid var(--border-color, #e0e0e0);
   border-radius: 6px 6px 0 0;
   cursor: pointer;
-  color: #000000;
+  color: var(--text-color, #000);
   transition: all 0.2s ease;
   font-weight: 500;
 }
 
 .tab:hover {
   background-color: var(--button-hover-bg, #e0e0e0);
+  color: var(--text-color, #000);
 }
 
 .tab.active {
@@ -83,13 +84,14 @@
   border: 1px solid var(--button-border, #ccc);
   border-radius: 4px;
   cursor: pointer;
-  color: #000000;
+  color: var(--text-color, #000);
   transition: all 0.2s ease;
   font-size: 0.9rem;
 }
 
 .sub-tab:hover {
   background-color: var(--button-hover-bg, #e0e0e0);
+  color: var(--text-color, #000);
 }
 
 .sub-tab.active {

@@ -14,6 +14,9 @@
   --shadow-color: rgba(0, 0, 0, 0.1);
   --toggle-bg: #cccccc;
   --accent-color: #396cd8;
+  --link-color: #396cd8;
+  --link-hover-color: #2952a3;
+  --link-visited-color: #5a67d8;
 }
 
 :root.dark {
@@ -31,6 +34,9 @@
   --shadow-color: rgba(0, 0, 0, 0.3);
   --toggle-bg: #555555;
   --accent-color: #5a8cff;
+  --link-color: #6fa8ff;
+  --link-hover-color: #8abbff;
+  --link-visited-color: #9d7bff;
 }
 
 body {

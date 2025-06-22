@@ -87,5 +87,19 @@
         <p>KANJIDIC2 by Jim Breen and the EDRDG</p>
       </div>
     </div>
+    <div class="setting-item">
+      <div class="setting-info">
+        <h3>Developer</h3>
+        <p>Daniel Garza ダニエル</p>
+      </div>
+    </div>
+    <div class ="setting-item">
+      <div class="setting-info">
+        <h3>Source Code</h3>
+        <p>
+          <a href="https://github.com/ssjdan27/OfflineNihongo" target="_blank" rel="noopener noreferrer">
+            View on GitHub
+          </a>
+        </p>
   </div>
 </main>
