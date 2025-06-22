@@ -23,6 +23,7 @@
   let activeTab = 'all';
   let activeJlptTab = 'all';
   let activeStrokeTab = 'all';
+  let searchQuery = '';
 
   const tabs = [
     { id: 'all', label: 'All Kanji' },
@@ -68,6 +69,29 @@
 
   function filterKanji() {
     let filtered = [...kanjiList];
+
+    // Apply search filter first if there's a search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter(kanji => {
+        // Search in meanings
+        if (kanji.meanings && kanji.meanings.toLowerCase().includes(query)) {
+          return true;
+        }
+        // Also search in character itself
+        if (kanji.character.includes(query)) {
+          return true;
+        }
+        // Search in readings (onyomi and kunyomi)
+        if (kanji.onyomi && kanji.onyomi.toLowerCase().includes(query)) {
+          return true;
+        }
+        if (kanji.kunyomi && kanji.kunyomi.toLowerCase().includes(query)) {
+          return true;
+        }
+        return false;
+      });
+    }
 
     switch (activeTab) {
       case 'all':
@@ -158,6 +182,15 @@
     filterKanji();
   }
 
+  function handleSearch() {
+    filterKanji();
+  }
+
+  function clearSearch() {
+    searchQuery = '';
+    filterKanji();
+  }
+
   function goToHome() {
     goto('/');
   }
@@ -187,6 +220,22 @@
 
 <main class="kanji-container">
   <h1>Kanji Database</h1>
+  
+  <!-- Search bar -->
+  <div class="search-container">
+    <input
+      type="text"
+      bind:value={searchQuery}
+      on:input={handleSearch}
+      placeholder="Search by meaning, reading, or character..."
+      class="search-input"
+    />
+    {#if searchQuery}
+      <button class="clear-search-btn" on:click={clearSearch}>
+        ✕
+      </button>
+    {/if}
+  </div>
   
   <!-- Main tabs -->
   <div class="tab-container">
@@ -236,7 +285,9 @@
   {:else}
     <div class="kanji-stats">
       Showing {filteredKanji.length} kanji
-      {#if activeTab === 'frequent'}
+      {#if searchQuery}
+        for "{searchQuery}"
+      {:else if activeTab === 'frequent'}
         (Top 1000 most frequent)
       {:else if activeTab === 'grade'}
         (Sorted by grade)
