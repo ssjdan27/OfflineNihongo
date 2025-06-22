@@ -1,8 +1,6 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { goto } from "$app/navigation";
-  import { afterUpdate } from 'svelte';
-
   let submitted_kanji = "";
   let character = "";
   let stroke_count = "";

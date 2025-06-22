@@ -20,7 +20,7 @@ struct Kanji {
 fn get_kanji(character: String, app: AppHandle) -> Result<Kanji, String> {
     println!("Searching for kanji: {}", character);
 
-    // 🔍 Find the correct path to the bundled resource
+    // Find the correct path to the bundled resource
     let db_path: PathBuf = app
         .path()
         .resource_dir()

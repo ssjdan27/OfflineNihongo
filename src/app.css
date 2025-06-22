@@ -1,0 +1,65 @@
+/* Global theme variables */
+:root {
+  --bg-color: #ffffff;
+  --text-color: #000000;
+  --text-muted: #666666;
+  --heading-color: #333333;
+  --card-bg: #ffffff;
+  --section-bg: #ffffff;
+  --button-bg: #f3f3f3;
+  --button-border: #cccccc;
+  --button-hover-bg: #e0e0e0;
+  --border-color: #e0e0e0;
+  --item-border: #f0f0f0;
+  --shadow-color: rgba(0, 0, 0, 0.1);
+  --toggle-bg: #cccccc;
+  --accent-color: #396cd8;
+}
+
+:root.dark {
+  --bg-color: #1a1a1a;
+  --text-color: #e0e0e0;
+  --text-muted: #a0a0a0;
+  --heading-color: #f0f0f0;
+  --card-bg: #2a2a2a;
+  --section-bg: #2a2a2a;
+  --button-bg: #3a3a3a;
+  --button-border: #555555;
+  --button-hover-bg: #4a4a4a;
+  --border-color: #444444;
+  --item-border: #3a3a3a;
+  --shadow-color: rgba(0, 0, 0, 0.3);
+  --toggle-bg: #555555;
+  --accent-color: #5a8cff;
+}
+
+body {
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Apply theme to common elements */
+h1, h2, h3, h4, h5, h6 {
+  color: var(--text-color);
+}
+
+/* Button styles that work with both themes */
+button {
+  background-color: var(--button-bg);
+  color: #000000;
+  border: 1px solid var(--button-border);
+  transition: all 0.2s ease;
+}
+
+button:hover {
+  background-color: var(--button-hover-bg);
+  color: #000000;
+}
+
+/* Card/container styles */
+.card, .container {
+  background-color: var(--section-bg);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 2px 4px var(--shadow-color);
+}
