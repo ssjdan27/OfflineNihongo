@@ -19,6 +19,7 @@
   let kanjiList: Kanji[] = [];
   let filteredKanji: Kanji[] = [];
   let loading = true;
+  let filteringLoading = false;
   let error = '';
   let activeTab = 'all';
   let activeJlptTab = 'all';
@@ -68,97 +69,114 @@
   }
 
   function filterKanji() {
-    let filtered = [...kanjiList];
+    // Show loading animation for larger datasets
+    filteringLoading = true;
+    
+    // Use setTimeout to allow UI to update and show loading animation
+    setTimeout(() => {
+      const startTime = Date.now();
+      
+      let filtered = [...kanjiList];
 
-    // Apply search filter first if there's a search query
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase().trim();
-      filtered = filtered.filter(kanji => {
-        // Search in meanings
-        if (kanji.meanings && kanji.meanings.toLowerCase().includes(query)) {
-          return true;
-        }
-        // Also search in character itself
-        if (kanji.character.includes(query)) {
-          return true;
-        }
-        // Search in readings (onyomi and kunyomi)
-        if (kanji.onyomi && kanji.onyomi.toLowerCase().includes(query)) {
-          return true;
-        }
-        if (kanji.kunyomi && kanji.kunyomi.toLowerCase().includes(query)) {
-          return true;
-        }
-        return false;
-      });
-    }
-
-    switch (activeTab) {
-      case 'all':
-        // Show all kanji, no additional filtering
-        break;
-      
-      case 'frequent':
-        // Top 1000 most frequent (frequency > 0), sorted by frequency ascending - we leave out those with frequency 0 for now since they don't seem to have a categorization
-        filtered = filtered
-          .filter(k => k.frequency > 0)
-          .sort((a, b) => a.frequency - b.frequency)
-          .slice(0, 1000);
-        break;
-      
-      case 'grade':
-        // Sort by grade, excluding grade 0 since those are not categorized
-        filtered = filtered
-          .filter(k => k.grade > 0)
-          .sort((a, b) => a.grade - b.grade);
-        break;
-      
-      case 'jlpt':
-        // Filter by JLPT level - leave out those with jlpt_level 0 since they are not categorized
-        if (activeJlptTab === 'all') {
-          filtered = filtered.filter(k => k.jlpt_level > 0);
-        } else {
-          const level = parseInt(activeJlptTab);
-          filtered = filtered.filter(k => k.jlpt_level === level);
-        }
-        // Sort by JLPT level, then by frequency
-        filtered.sort((a, b) => {
-          if (a.jlpt_level !== b.jlpt_level) {
-            return a.jlpt_level - b.jlpt_level;
+      // Apply search filter first if there's a search query
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase().trim();
+        filtered = filtered.filter(kanji => {
+          // Search in meanings
+          if (kanji.meanings && kanji.meanings.toLowerCase().includes(query)) {
+            return true;
           }
-          return (a.frequency || 9999) - (b.frequency || 9999);
+          // Also search in character itself
+          if (kanji.character.includes(query)) {
+            return true;
+          }
+          // Search in readings (onyomi and kunyomi)
+          if (kanji.onyomi && kanji.onyomi.toLowerCase().includes(query)) {
+            return true;
+          }
+          if (kanji.kunyomi && kanji.kunyomi.toLowerCase().includes(query)) {
+            return true;
+          }
+          return false;
         });
-        break;
-      
-      case 'strokes':
-        // Filter by stroke count range if specified
-        if (activeStrokeTab !== 'all') {
-          switch (activeStrokeTab) {
-            case '1-5':
-              filtered = filtered.filter(k => k.stroke_count >= 1 && k.stroke_count <= 5);
-              break;
-            case '6-10':
-              filtered = filtered.filter(k => k.stroke_count >= 6 && k.stroke_count <= 10);
-              break;
-            case '11-20':
-              filtered = filtered.filter(k => k.stroke_count >= 11 && k.stroke_count <= 20);
-              break;
-            case '20+':
-              filtered = filtered.filter(k => k.stroke_count > 20);
-              break;
-          }
-        }
-        // Sort by stroke count, then by frequency
-        filtered.sort((a, b) => {
-          if (a.stroke_count !== b.stroke_count) {
-            return a.stroke_count - b.stroke_count;
-          }
-          return (a.frequency || 9999) - (b.frequency || 9999);
-        });
-        break;
-    }
+      }
 
-    filteredKanji = filtered;
+      switch (activeTab) {
+        case 'all':
+          // Show all kanji, no additional filtering
+          break;
+        
+        case 'frequent':
+          // Top 1000 most frequent (frequency > 0), sorted by frequency ascending - we leave out those with frequency 0 for now since they don't seem to have a categorization
+          filtered = filtered
+            .filter(k => k.frequency > 0)
+            .sort((a, b) => a.frequency - b.frequency)
+            .slice(0, 1000);
+          break;
+        
+        case 'grade':
+          // Sort by grade, excluding grade 0 since those are not categorized
+          filtered = filtered
+            .filter(k => k.grade > 0)
+            .sort((a, b) => a.grade - b.grade);
+          break;
+        
+        case 'jlpt':
+          // Filter by JLPT level - leave out those with jlpt_level 0 since they are not categorized
+          if (activeJlptTab === 'all') {
+            filtered = filtered.filter(k => k.jlpt_level > 0);
+          } else {
+            const level = parseInt(activeJlptTab);
+            filtered = filtered.filter(k => k.jlpt_level === level);
+          }
+          // Sort by JLPT level, then by frequency
+          filtered.sort((a, b) => {
+            if (a.jlpt_level !== b.jlpt_level) {
+              return a.jlpt_level - b.jlpt_level;
+            }
+            return (a.frequency || 9999) - (b.frequency || 9999);
+          });
+          break;
+        
+        case 'strokes':
+          // Filter by stroke count range if specified
+          if (activeStrokeTab !== 'all') {
+            switch (activeStrokeTab) {
+              case '1-5':
+                filtered = filtered.filter(k => k.stroke_count >= 1 && k.stroke_count <= 5);
+                break;
+              case '6-10':
+                filtered = filtered.filter(k => k.stroke_count >= 6 && k.stroke_count <= 10);
+                break;
+              case '11-20':
+                filtered = filtered.filter(k => k.stroke_count >= 11 && k.stroke_count <= 20);
+                break;
+              case '20+':
+                filtered = filtered.filter(k => k.stroke_count > 20);
+                break;
+            }
+          }
+          // Sort by stroke count, then by frequency
+          filtered.sort((a, b) => {
+            if (a.stroke_count !== b.stroke_count) {
+              return a.stroke_count - b.stroke_count;
+            }
+            return (a.frequency || 9999) - (b.frequency || 9999);
+          });
+          break;
+      }
+
+      const processingTime = Date.now() - startTime;
+      const minDisplayTime = 300; // Minimum time to show loading animation
+      
+      // Ensure loading animation shows for at least minDisplayTime
+      const remainingTime = Math.max(0, minDisplayTime - processingTime);
+      
+      setTimeout(() => {
+        filteredKanji = filtered;
+        filteringLoading = false;
+      }, remainingTime);
+    }, 50); // Initial delay to show loading animation
   }
 
   function setActiveTab(tabId: string) {
@@ -282,6 +300,11 @@
     <div class="loading">Loading kanji...</div>
   {:else if error}
     <div class="error">{error}</div>
+  {:else if filteringLoading}
+    <div class="filtering-loading">
+      <div class="spinner"></div>
+      <span>Filtering kanji...</span>
+    </div>
   {:else}
     <div class="kanji-stats">
       Showing {filteredKanji.length} kanji
