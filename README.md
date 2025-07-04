@@ -52,6 +52,10 @@ In accordance with the license terms, we acknowledge that:
 3. The inclusion of this data in our application does not indicate any endorsement by the KanjiVG project
 4. Our modifications and use of this data does not remove or diminish the original copyright over the files
 
+### animCJK Project
+
+This application uses svg animations for Kanji and Kana from animCJK Github Respository (https://github.com/parsimonhi/animCJK).
+
 ## License
 
 This application itself is licensed under [MIT License](LICENSE), but the dictionary data and stroke order diagrams used within it are subject to the license terms of their respective projects as described above.

@@ -217,8 +217,9 @@ fn get_kanji_svg(character: String, app: AppHandle) -> Result<String, String> {
         return Err("Only one character is allowed".into());
     }
 
-    let unicode_hex = format!("{:05x}", character.chars().next().unwrap() as u32);
-    let svg_filename = format!("{}.svg", unicode_hex);
+    let unicode_code = character.chars().next().unwrap() as u32;
+    let svg_filename = format!("{}.svg", unicode_code);
+    let hex_filename = format!("{:05x}.svg", unicode_code);
 
     // Use the resource_dir() to get the correct path to bundled resources
     let resource_dir = app
@@ -226,18 +227,37 @@ fn get_kanji_svg(character: String, app: AppHandle) -> Result<String, String> {
         .resource_dir()
         .map_err(|e| format!("Failed to get resource directory: {}", e))?;
     
-    // Join with the kanji_svg directory and filename
-    let svg_path = resource_dir.join("data/kanji_svg").join(&svg_filename);
-
-    println!("Looking for SVG at path: {:?}", svg_path);
+    // First, try to find animated SVG from AnimCJK (uses decimal unicode numbers)
+    let animated_svg_path = resource_dir.join("data/kanji_svg_animated/svgsJa").join(&svg_filename);
+    
+    println!("Looking for animated SVG at path: {:?}", animated_svg_path);
+    
+    if animated_svg_path.exists() {
+        println!("Animated SVG found at: {:?}", animated_svg_path);
+        
+        // Read the animated SVG content
+        let svg_content = std::fs::read_to_string(&animated_svg_path)
+            .map_err(|e| format!("Failed to read animated SVG file: {}", e))?;
+        
+        // Clean up the SVG content by removing XML declaration and DOCTYPE
+        let cleaned_svg = clean_svg_content(&svg_content);
+        
+        // Return the cleaned SVG content
+        return Ok(cleaned_svg);
+    }
+    
+    // Fallback to static SVG from KanjiVG (uses hex unicode numbers)
+    let static_svg_path = resource_dir.join("data/kanji_svg").join(&hex_filename);
+    
+    println!("Looking for static SVG at path: {:?}", static_svg_path);
 
     // Check if the file exists
-    if svg_path.exists() {
-        println!("SVG found at: {:?}", svg_path);
+    if static_svg_path.exists() {
+        println!("Static SVG found at: {:?}", static_svg_path);
         
         // Read the file content instead of returning the path
-        let svg_content = std::fs::read_to_string(&svg_path)
-            .map_err(|e| format!("Failed to read SVG file: {}", e))?;
+        let svg_content = std::fs::read_to_string(&static_svg_path)
+            .map_err(|e| format!("Failed to read static SVG file: {}", e))?;
         
         // Clean up the SVG content by removing XML declaration and DOCTYPE
         let cleaned_svg = clean_svg_content(&svg_content);
@@ -245,8 +265,47 @@ fn get_kanji_svg(character: String, app: AppHandle) -> Result<String, String> {
         // Return the cleaned SVG content
         Ok(cleaned_svg)
     } else {
-        Err(format!("SVG not found for {} (looked at: {:?})", character, svg_path))
+        Err(format!("SVG not found for {} (looked at animated: {:?}, static: {:?})", character, animated_svg_path, static_svg_path))
     }
+}
+
+#[tauri::command]
+fn get_kana_svg(character: String, app: AppHandle) -> Result<String, String> {
+    if character.chars().count() != 1 {
+        return Err("Only one character is allowed".into());
+    }
+
+    let unicode_code = character.chars().next().unwrap() as u32;
+    let svg_filename = format!("{}.svg", unicode_code);
+
+    // Use the resource_dir() to get the correct path to bundled resources
+    let resource_dir = app
+        .path()
+        .resource_dir()
+        .map_err(|e| format!("Failed to get resource directory: {}", e))?;
+    
+    // First, try to find animated SVG from AnimCJK (uses decimal unicode numbers)
+    let animated_svg_path = resource_dir.join("data/kana_svg_animated/svgsJaKana").join(&svg_filename);
+    
+    println!("Looking for animated kana SVG at path: {:?}", animated_svg_path);
+    
+    if animated_svg_path.exists() {
+        println!("Animated kana SVG found at: {:?}", animated_svg_path);
+        
+        // Read the animated SVG content
+        let svg_content = std::fs::read_to_string(&animated_svg_path)
+            .map_err(|e| format!("Failed to read animated kana SVG file: {}", e))?;
+        
+        // Clean up the SVG content by removing XML declaration and DOCTYPE
+        let cleaned_svg = clean_svg_content(&svg_content);
+        
+        // Return the cleaned SVG content
+        return Ok(cleaned_svg);
+    }
+    
+    // If no animated SVG found, return an error for now
+    // (We could add fallback logic here if we had static kana SVGs)
+    Err(format!("Animated kana SVG not found for {} (looked at: {:?})", character, animated_svg_path))
 }
 
 #[tauri::command]
@@ -897,7 +956,9 @@ async fn add_new_cards(app: AppHandle, count: i32) -> Result<(), String> {
 }
 
 fn clean_svg_content(svg_content: &str) -> String {
-    // Remove XML declaration
+    // For AnimCJK SVGs, we need to be more careful about cleaning
+    // The SVG starts with a comment block, then has the actual SVG element
+    
     let mut cleaned = svg_content.to_string();
     
     // Remove XML declaration (<?xml ... ?>)
@@ -914,16 +975,18 @@ fn clean_svg_content(svg_content: &str) -> String {
         }
     }
     
-    // Remove any remaining comments at the start
-    while cleaned.trim_start().starts_with("<!--") {
-        if let Some(start) = cleaned.find("<!--") {
-            if let Some(end) = cleaned[start..].find("-->") {
-                cleaned = cleaned[..start].to_string() + &cleaned[start + end + 3..];
-            } else {
-                break;
+    // For AnimCJK SVGs, remove the large comment block at the top
+    // but preserve the SVG structure
+    if cleaned.trim_start().starts_with("<!--") {
+        // Find the first occurrence of <svg after the comment
+        if let Some(svg_start) = cleaned.find("<svg") {
+            // Check if there's a comment before the SVG
+            let before_svg = &cleaned[..svg_start];
+            
+            // If there's a comment, remove it
+            if before_svg.contains("<!--") && before_svg.contains("-->") {
+                cleaned = cleaned[svg_start..].to_string();
             }
-        } else {
-            break;
         }
     }
     
@@ -936,7 +999,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
-        .invoke_handler(tauri::generate_handler![get_kanji, get_all_kanji, get_kanji_svg, get_kana_data, save_best_time, get_best_times, get_study_stats, start_review_session, submit_card_review, add_new_cards])
+        .invoke_handler(tauri::generate_handler![get_kanji, get_all_kanji, get_kanji_svg, get_kana_svg, get_kana_data, save_best_time, get_best_times, get_study_stats, start_review_session, submit_card_review, add_new_cards])
         .run(tauri::generate_context!())
         .expect("error while running tauri application :(");
 }

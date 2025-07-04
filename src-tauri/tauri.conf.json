@@ -35,7 +35,10 @@
     "resources": [
       "data/kanji.db",
       "data/kana.json",
-      "data/kanji_svg/*"
+      "data/kanji_svg/*",
+      "data/kanji_svg_animated/svgsJa/*",
+      "data/kanji_svg_animated/svgsJaSpecial/*",
+      "data/kana_svg_animated/svgsJaKana/*"
     ]
   }
 }

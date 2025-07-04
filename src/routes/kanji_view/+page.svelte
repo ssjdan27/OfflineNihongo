@@ -41,6 +41,13 @@
   let modalOpen = false;
   let kanjiSvg = '';
   let svgLoading = false;
+  
+  // Animation state variables
+  let isAnimating = false;
+  let animationSpeed = 1000; // milliseconds per stroke
+  let currentStroke = 0;
+  let totalStrokes = 0;
+  let animationInterval: ReturnType<typeof setInterval> | null = null;
 
   const tabs = [
     { id: 'all', label: 'All Kanji' },
@@ -259,6 +266,20 @@
       // Get kanji SVG
       try {
         kanjiSvg = await invoke('get_kanji_svg', { character: kanji.character });
+        
+        console.log('Received SVG from backend:', kanjiSvg ? 'SVG content received' : 'No SVG content');
+        console.log('SVG length:', kanjiSvg ? kanjiSvg.length : 0);
+        console.log('SVG starts with:', kanjiSvg ? kanjiSvg.substring(0, 100) : 'N/A');
+        console.log('SVG contains acjk class:', kanjiSvg ? kanjiSvg.includes('class="acjk"') : false);
+        
+        // Initialize animation after SVG loads
+        if (kanjiSvg) {
+          // Use a small delay to ensure DOM is updated
+          setTimeout(() => {
+            console.log('About to initialize animation...');
+            injectAndInitializeAnimation();
+          }, 100);
+        }
       } catch (svgError) {
         console.warn('SVG not found for', kanji.character, svgError);
         kanjiSvg = '';
@@ -275,12 +296,483 @@
     modalOpen = false;
     selectedKanji = null;
     kanjiSvg = '';
+    stopAnimation();
   }
 
   function handleKeydown(event: KeyboardEvent) {
     if (event.key === 'Escape' && modalOpen) {
       closeModal();
     }
+  }
+
+  // SVG injection and animation initialization
+  function injectAndInitializeAnimation() {
+    if (!kanjiSvg) {
+      console.log('No kanjiSvg content available');
+      return;
+    }
+    
+    console.log('InjectAndInitializeAnimation called, kanjiSvg length:', kanjiSvg.length);
+    
+    // Wait for DOM to be ready
+    const svgWrapper = document.querySelector('.svg-wrapper');
+    
+    if (!svgWrapper) {
+      console.warn('SVG wrapper not found');
+      return;
+    }
+    
+    // Check if this is an AnimCJK SVG by looking for the acjk class in the SVG content
+    const isAnimCJK = kanjiSvg.includes('class="acjk"');
+    
+    console.log('Is AnimCJK SVG:', isAnimCJK);
+    
+    if (isAnimCJK) {
+      // AnimCJK SVG - use fetch/innerHTML method as recommended
+      console.log('AnimCJK SVG detected - using direct innerHTML injection');
+      
+      // Clear the wrapper and inject the SVG directly
+      svgWrapper.innerHTML = kanjiSvg;
+      
+      console.log('SVG injected, wrapper innerHTML length:', svgWrapper.innerHTML.length);
+      
+      // Force style override immediately after injection
+      const injectedSvg = svgWrapper.querySelector('svg');
+      if (injectedSvg) {
+        // Force SVG dimensions and visibility
+        injectedSvg.style.width = '300px';
+        injectedSvg.style.height = '300px';
+        injectedSvg.style.display = 'block';
+        injectedSvg.style.backgroundColor = 'white';
+        
+        console.log('SVG styled immediately after injection');
+      }
+      
+      // Initialize AnimCJK animation
+      const svgContainer = svgWrapper.querySelector('svg');
+      if (svgContainer) {
+        console.log('AnimCJK SVG successfully injected');
+        console.log('SVG element:', svgContainer);
+        console.log('SVG classes:', svgContainer.classList);
+        console.log('SVG computed style width:', window.getComputedStyle(svgContainer).width);
+        console.log('SVG computed style height:', window.getComputedStyle(svgContainer).height);
+        console.log('SVG bounding box:', svgContainer.getBoundingClientRect());
+        
+        // Find stroke paths with clip-path (animated paths)
+        const strokePaths = svgContainer.querySelectorAll('path[clip-path]');
+        const staticPaths = svgContainer.querySelectorAll('path[id]');
+        totalStrokes = strokePaths.length;
+        currentStroke = 0;
+        
+        console.log(`Found ${totalStrokes} animated strokes and ${staticPaths.length} static paths for AnimCJK kanji`);
+        
+        // Debug stroke paths styling
+        strokePaths.forEach((path, index) => {
+          const pathElement = path as HTMLElement;
+          const computedStyle = window.getComputedStyle(pathElement);
+          console.log(`Animated stroke ${index + 1}:`, {
+            stroke: computedStyle.stroke,
+            strokeWidth: computedStyle.strokeWidth,
+            strokeDasharray: computedStyle.strokeDasharray,
+            strokeDashoffset: computedStyle.strokeDashoffset,
+            fill: computedStyle.fill,
+            opacity: computedStyle.opacity
+          });
+        });
+        
+        // Debug static paths styling
+        staticPaths.forEach((path, index) => {
+          const pathElement = path as HTMLElement;
+          const computedStyle = window.getComputedStyle(pathElement);
+          console.log(`Static stroke ${index + 1}:`, {
+            fill: computedStyle.fill,
+            stroke: computedStyle.stroke,
+            strokeWidth: computedStyle.strokeWidth,
+            opacity: computedStyle.opacity
+          });
+        });
+        
+        // Show all strokes immediately when modal opens for now
+        // Later we can change this to start with hidden strokes
+        setTimeout(() => {
+          showAllAnimCJKStrokes();
+        }, 100);
+      } else {
+        console.error('Failed to find injected SVG element');
+      }
+    } else {
+      // KanjiVG SVG - use Svelte's reactive binding (kanjiSvg will be used in template)
+      console.log('KanjiVG SVG detected - using Svelte template binding');
+      
+      // Clear the wrapper (let Svelte handle it via {@html})
+      svgWrapper.innerHTML = '';
+      
+      // Initialize KanjiVG animation after DOM updates
+      setTimeout(() => {
+        initializeKanjiVGAnimation();
+      }, 50);
+    }
+  }
+
+  // Animation control functions
+  function initializeKanjiVGAnimation() {
+    const svgContainer = document.querySelector('.svg-wrapper svg');
+    
+    console.log('SVG container element:', svgContainer);
+    
+    if (!svgContainer) {
+      console.warn('SVG container not found for KanjiVG');
+      return;
+    }
+    
+    console.log('KanjiVG SVG detected - using manual animation');
+    
+    // Find stroke paths - KanjiVG format uses path elements with kvg:*-s* IDs
+    let strokePaths = svgContainer.querySelectorAll('path[id*="-s"]');
+    
+    // If no stroke paths found, try alternative patterns
+    if (strokePaths.length === 0) {
+      strokePaths = svgContainer.querySelectorAll('g[id^="kvg:"] path');
+    }
+    
+    // If still no strokes found, try to find all path elements
+    if (strokePaths.length === 0) {
+      strokePaths = svgContainer.querySelectorAll('path');
+    }
+    
+    totalStrokes = strokePaths.length;
+    currentStroke = 0;
+    
+    console.log(`Found ${totalStrokes} strokes for KanjiVG kanji`);
+    
+    // Reset animation state
+    resetKanjiVGAnimation();
+    
+    // Initialize all strokes as visible by default
+    showAllStrokes();
+  }
+
+  function startAnimation() {
+    if (isAnimating || totalStrokes === 0) return;
+    
+    const svgContainer = document.querySelector('.svg-wrapper svg');
+    if (!svgContainer) return;
+    
+    // Check if this is an AnimCJK SVG
+    const isAnimCJK = svgContainer.classList.contains('acjk');
+    
+    if (isAnimCJK) {
+      startAnimCJKAnimation();
+    } else {
+      // KanjiVG animation logic
+      isAnimating = true;
+      currentStroke = 0;
+      
+      // Hide all strokes initially
+      hideAllKanjiVGStrokes();
+      
+      // Start animation interval
+      animationInterval = setInterval(() => {
+        if (currentStroke < totalStrokes) {
+          showKanjiVGStroke(currentStroke);
+          currentStroke++;
+        } else {
+          stopAnimation();
+        }
+      }, animationSpeed);
+    }
+  }
+
+  function stopAnimation() {
+    if (animationInterval) {
+      clearInterval(animationInterval);
+      animationInterval = null;
+    }
+    isAnimating = false;
+  }
+
+  function resetAnimation() {
+    const svgContainer = document.querySelector('.svg-wrapper svg');
+    if (!svgContainer) return;
+    
+    // Check if this is an AnimCJK SVG
+    const isAnimCJK = svgContainer.classList.contains('acjk');
+    
+    if (isAnimCJK) {
+      resetAnimCJKAnimation();
+    } else {
+      // KanjiVG reset logic
+      resetKanjiVGAnimation();
+    }
+  }
+
+  function resetKanjiVGAnimation() {
+    stopAnimation();
+    currentStroke = 0;
+    hideAllKanjiVGStrokes();
+  }
+
+  function hideAllKanjiVGStrokes() {
+    const svgContainer = document.querySelector('.svg-wrapper svg');
+    if (!svgContainer) return;
+    
+    // Find stroke paths - KanjiVG format
+    let strokePaths = svgContainer.querySelectorAll('path[id*="-s"]');
+    
+    if (strokePaths.length === 0) {
+      strokePaths = svgContainer.querySelectorAll('g[id^="kvg:"] path');
+    }
+    
+    if (strokePaths.length === 0) {
+      strokePaths = svgContainer.querySelectorAll('path');
+    }
+    
+    strokePaths.forEach((stroke) => {
+      (stroke as HTMLElement).style.opacity = '0';
+      (stroke as HTMLElement).style.transition = 'opacity 0.3s ease';
+    });
+  }
+
+  function showKanjiVGStroke(strokeIndex: number) {
+    const svgContainer = document.querySelector('.svg-wrapper svg');
+    if (!svgContainer) return;
+    
+    // Find stroke paths - KanjiVG format
+    let strokePaths = svgContainer.querySelectorAll('path[id*="-s"]');
+    
+    if (strokePaths.length === 0) {
+      strokePaths = svgContainer.querySelectorAll('g[id^="kvg:"] path');
+    }
+    
+    if (strokePaths.length === 0) {
+      strokePaths = svgContainer.querySelectorAll('path');
+    }
+    
+    const strokePath = strokePaths[strokeIndex];
+    if (strokePath) {
+      (strokePath as HTMLElement).style.opacity = '1';
+      (strokePath as HTMLElement).style.transition = 'opacity 0.3s ease';
+    }
+  }
+
+  function showAllKanjiVGStrokes() {
+    const svgContainer = document.querySelector('.svg-wrapper svg');
+    if (!svgContainer) return;
+    
+    // Find stroke paths - KanjiVG format
+    let strokePaths = svgContainer.querySelectorAll('path[id*="-s"]');
+    
+    if (strokePaths.length === 0) {
+      strokePaths = svgContainer.querySelectorAll('g[id^="kvg:"] path');
+    }
+    
+    if (strokePaths.length === 0) {
+      strokePaths = svgContainer.querySelectorAll('path');
+    }
+    
+    strokePaths.forEach((stroke) => {
+      (stroke as HTMLElement).style.opacity = '1';
+      (stroke as HTMLElement).style.transition = 'opacity 0.3s ease';
+    });
+    currentStroke = totalStrokes;
+  }
+
+  function showAllStrokes() {
+    const svgContainer = document.querySelector('.svg-wrapper svg');
+    if (!svgContainer) return;
+    
+    // Check if this is an AnimCJK SVG
+    const isAnimCJK = svgContainer.classList.contains('acjk');
+    
+    if (isAnimCJK) {
+      showAllAnimCJKStrokes();
+    } else {
+      // KanjiVG show all logic
+      showAllKanjiVGStrokes();
+    }
+  }
+
+  function changeAnimationSpeed(newSpeed: number) {
+    animationSpeed = newSpeed;
+    
+    // If currently animating, restart with new speed
+    if (isAnimating) {
+      const svgContainer = document.querySelector('.svg-wrapper svg');
+      if (svgContainer) {
+        const isAnimCJK = svgContainer.classList.contains('acjk');
+        
+        if (isAnimCJK) {
+          // For AnimCJK, we need to restart the animation
+          resetAnimCJKAnimation();
+          setTimeout(() => startAnimCJKAnimation(), 100);
+        } else {
+          // For KanjiVG, restart the interval-based animation
+          stopAnimation();
+          startAnimation();
+        }
+      }
+    }
+  }
+
+  // AnimCJK animation functions
+  function resetAnimCJKAnimation() {
+    const svgContainer = document.querySelector('.svg-wrapper svg');
+    if (!svgContainer) return;
+    
+    console.log('Resetting AnimCJK animation');
+    
+    // Stop any running animation
+    isAnimating = false;
+    currentStroke = 0;
+    
+    // Get all animated paths and hide them
+    const strokePaths = svgContainer.querySelectorAll('path[clip-path]');
+    strokePaths.forEach((path) => {
+      const pathElement = path as HTMLElement;
+      
+      // Set up stroke styling
+      pathElement.style.stroke = '#000';
+      pathElement.style.strokeWidth = '80px';
+      pathElement.style.fill = 'none';
+      pathElement.style.opacity = '1';
+      pathElement.style.strokeLinecap = 'round';
+      pathElement.style.strokeLinejoin = 'round';
+      pathElement.style.strokeDasharray = '3339';
+      pathElement.style.strokeDashoffset = '3339'; // Hide all strokes
+      pathElement.style.transition = 'none';
+    });
+    
+    // Also style static paths
+    const staticPaths = svgContainer.querySelectorAll('path[id]');
+    staticPaths.forEach((path) => {
+      const pathElement = path as HTMLElement;
+      pathElement.style.stroke = '#ddd';
+      pathElement.style.strokeWidth = '22px';
+      pathElement.style.fill = 'none';
+      pathElement.style.opacity = '0.4';
+      pathElement.style.strokeLinecap = 'round';
+      pathElement.style.strokeLinejoin = 'round';
+    });
+    
+    console.log('AnimCJK animation reset complete');
+  }
+
+  function startAnimCJKAnimation() {
+    const svgContainer = document.querySelector('.svg-wrapper svg');
+    if (!svgContainer) return;
+    
+    isAnimating = true;
+    currentStroke = 0;
+    
+    // Get all animated paths
+    const strokePaths = svgContainer.querySelectorAll('path[clip-path]');
+    
+    console.log('Starting AnimCJK animation with', strokePaths.length, 'strokes');
+    
+    // First, hide all strokes by setting stroke-dashoffset to a large value
+    strokePaths.forEach((path, index) => {
+      const pathElement = path as HTMLElement;
+      
+      // Set up stroke styling for animation
+      pathElement.style.stroke = '#000';
+      pathElement.style.strokeWidth = '80px';
+      pathElement.style.fill = 'none';
+      pathElement.style.opacity = '1';
+      pathElement.style.strokeLinecap = 'round';
+      pathElement.style.strokeLinejoin = 'round';
+      pathElement.style.strokeDasharray = '3339';
+      pathElement.style.strokeDashoffset = '3339'; // Hide initially
+      pathElement.style.transition = 'none'; // Remove any existing transitions
+    });
+    
+    // Animate strokes one by one
+    let currentAnimatingStroke = 0;
+    
+    const animateNextStroke = () => {
+      if (currentAnimatingStroke < strokePaths.length && isAnimating) {
+        const pathElement = strokePaths[currentAnimatingStroke] as HTMLElement;
+        
+        console.log(`Animating stroke ${currentAnimatingStroke + 1}`);
+        
+        // Set transition for smooth animation
+        pathElement.style.transition = `stroke-dashoffset ${animationSpeed / 1000}s ease-out`;
+        
+        // Animate to visible (dashoffset 0)
+        pathElement.style.strokeDashoffset = '0';
+        
+        currentStroke = currentAnimatingStroke + 1;
+        currentAnimatingStroke++;
+        
+        // Schedule next stroke
+        setTimeout(animateNextStroke, animationSpeed);
+      } else {
+        // Animation complete
+        isAnimating = false;
+        currentStroke = totalStrokes;
+        console.log('AnimCJK animation complete');
+      }
+    };
+    
+    // Start the animation
+    setTimeout(animateNextStroke, 100);
+  }
+
+  function showAllAnimCJKStrokes() {
+    const svgContainer = document.querySelector('.svg-wrapper svg');
+    if (!svgContainer) return;
+    
+    // For AnimCJK, showing all strokes means making them visible immediately
+    // The AnimCJK animation works by animating stroke-dashoffset from 3339 to 0
+    // To show all strokes, we set stroke-dashoffset to 0 for all paths
+    const strokePaths = svgContainer.querySelectorAll('path[clip-path]');
+    console.log('Found', strokePaths.length, 'animated stroke paths');
+    
+    strokePaths.forEach((path, index) => {
+      const pathElement = path as HTMLElement;
+      
+      // Log current state before modification
+      const currentDashOffset = window.getComputedStyle(pathElement).strokeDashoffset;
+      console.log(`Stroke ${index + 1} current dashoffset:`, currentDashOffset);
+      
+      // Make strokes visible immediately by setting dashoffset to 0
+      pathElement.style.strokeDashoffset = '0';
+      pathElement.style.animation = 'none'; // Disable animation
+      
+      // Also ensure stroke is visible
+      pathElement.style.stroke = '#000';
+      pathElement.style.strokeWidth = '80px';
+      pathElement.style.fill = 'none';
+      pathElement.style.opacity = '1';
+      pathElement.style.strokeLinecap = 'round';
+      pathElement.style.strokeLinejoin = 'round';
+      
+      // Log new state after modification
+      const newDashOffset = window.getComputedStyle(pathElement).strokeDashoffset;
+      console.log(`Stroke ${index + 1} new dashoffset:`, newDashOffset);
+    });
+    
+    // Also handle static paths (background strokes)
+    const staticPaths = svgContainer.querySelectorAll('path[id]');
+    console.log('Found', staticPaths.length, 'static stroke paths');
+    
+    staticPaths.forEach((path, index) => {
+      const pathElement = path as HTMLElement;
+      
+      // Make static strokes visible with light gray
+      pathElement.style.stroke = '#ddd';
+      pathElement.style.strokeWidth = '22px';
+      pathElement.style.fill = 'none';
+      pathElement.style.opacity = '0.4';
+      pathElement.style.strokeLinecap = 'round';
+      pathElement.style.strokeLinejoin = 'round';
+      
+      console.log(`Static stroke ${index + 1} styled`);
+    });
+    
+    currentStroke = totalStrokes;
+    isAnimating = false;
+    
+    console.log('Showed all AnimCJK strokes by setting stroke-dashoffset to 0');
   }
 </script>
 
@@ -445,7 +937,47 @@
               <div class="svg-loading">Loading stroke order...</div>
             {:else if kanjiSvg}
               <div class="svg-wrapper">
-                {@html kanjiSvg}
+                <!-- AnimCJK SVGs are injected via JavaScript, KanjiVG SVGs use {@html} -->
+                {#if kanjiSvg && !kanjiSvg.includes('class="acjk"')}
+                  {@html kanjiSvg}
+                {/if}
+              </div>
+              <!-- Animation Controls -->
+              <div class="animation-controls">
+                <div class="animation-buttons">
+                  <button class="control-btn" on:click={startAnimation} disabled={isAnimating || totalStrokes === 0}>
+                    {isAnimating ? 'Playing...' : 'Play'}
+                  </button>
+                  <button class="control-btn" on:click={stopAnimation} disabled={!isAnimating}>
+                    Stop
+                  </button>
+                  <button class="control-btn" on:click={resetAnimation} disabled={totalStrokes === 0}>
+                    Reset
+                  </button>
+                  <button class="control-btn" on:click={showAllStrokes} disabled={totalStrokes === 0}>
+                    Show All
+                  </button>
+                </div>
+                
+                <div class="animation-info">
+                  <span class="stroke-counter">
+                    Stroke {currentStroke} of {totalStrokes}
+                  </span>
+                </div>
+                
+                <div class="speed-control">
+                  <label for="speed-slider">Speed:</label>
+                  <input
+                    id="speed-slider"
+                    type="range"
+                    min="200"
+                    max="2000"
+                    step="100"
+                    bind:value={animationSpeed}
+                    on:input={() => changeAnimationSpeed(animationSpeed)}
+                  />
+                  <span class="speed-display">{(2200 - animationSpeed) / 1000}x</span>
+                </div>
               </div>
             {:else}
               <div class="svg-placeholder">No stroke order available</div>
