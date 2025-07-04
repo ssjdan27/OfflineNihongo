@@ -29,6 +29,13 @@ struct KanjiLookup {
     nanori: Vec<String>,
 }
 
+#[derive(Serialize)]
+struct KanaChar {
+    character: String,
+    romaji: String,
+    kana_type: String, // "hiragana" or "katakana"
+}
+
 #[command]
 fn get_all_kanji(app: AppHandle) -> Result<Vec<Kanji>, String> {
     println!("Fetching all kanji from database");
@@ -187,12 +194,81 @@ fn get_kanji_svg(character: String, app: AppHandle) -> Result<String, String> {
     }
 }
 
+#[command]
+fn get_kana_data(app: AppHandle) -> Result<Vec<KanaChar>, String> {
+    println!("Fetching kana data from JSON file");
+
+    // Find the correct path to the bundled resource
+    let json_path: PathBuf = app
+        .path()
+        .resource_dir()
+        .map_err(|e| {
+            println!("Resource dir error: {:?}", e);
+            e.to_string()
+        })?
+        .join("data/kana.json");
+
+    println!("Resolved JSON path: {:?}", json_path);
+
+    let json_content = std::fs::read_to_string(&json_path)
+        .map_err(|e| {
+            println!("Failed to read kana.json: {:?}", e);
+            e.to_string()
+        })?;
+
+    let kana_data: serde_json::Value = serde_json::from_str(&json_content)
+        .map_err(|e| {
+            println!("Failed to parse kana.json: {:?}", e);
+            e.to_string()
+        })?;
+
+    let mut kana_list = Vec::new();
+
+    // Parse the nested JSON structure
+    if let Some(obj) = kana_data.as_object() {
+        for (_consonant_group, vowel_group) in obj {
+            if let Some(vowel_obj) = vowel_group.as_object() {
+                for (_vowel, types) in vowel_obj {
+                    if let Some(types_obj) = types.as_object() {
+                        for (_type_name, kana_info) in types_obj {
+                            if let Some(kana_obj) = kana_info.as_object() {
+                                if let (Some(hiragana), Some(katakana), Some(romaji)) = (
+                                    kana_obj.get("Hiragana").and_then(|v| v.as_str()),
+                                    kana_obj.get("Katakana").and_then(|v| v.as_str()),
+                                    kana_obj.get("Romaji").and_then(|v| v.as_str()),
+                                ) {
+                                    // Add hiragana
+                                    kana_list.push(KanaChar {
+                                        character: hiragana.to_string(),
+                                        romaji: romaji.to_string(),
+                                        kana_type: "hiragana".to_string(),
+                                    });
+                                    
+                                    // Add katakana
+                                    kana_list.push(KanaChar {
+                                        character: katakana.to_string(),
+                                        romaji: romaji.to_string(),
+                                        kana_type: "katakana".to_string(),
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    println!("Found {} kana characters", kana_list.len());
+    Ok(kana_list)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
-        .invoke_handler(tauri::generate_handler![get_kanji, get_all_kanji, get_kanji_svg])
+        .invoke_handler(tauri::generate_handler![get_kanji, get_all_kanji, get_kanji_svg, get_kana_data])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
