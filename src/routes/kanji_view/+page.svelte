@@ -16,6 +16,18 @@
     nanori: string;
   }
 
+  interface KanjiLookup {
+    character: string;
+    stroke_count: number;
+    grade: number;
+    jlpt_level: number;
+    frequency: number;
+    onyomi: string;
+    kunyomi: string;
+    meanings: string[];
+    nanori: string[];
+  }
+
   let kanjiList: Kanji[] = [];
   let filteredKanji: Kanji[] = [];
   let loading = true;
@@ -25,6 +37,10 @@
   let activeJlptTab = 'all';
   let activeStrokeTab = 'all';
   let searchQuery = '';
+  let selectedKanji: KanjiLookup | null = null;
+  let modalOpen = false;
+  let kanjiSvg = '';
+  let svgLoading = false;
 
   const tabs = [
     { id: 'all', label: 'All Kanji' },
@@ -230,6 +246,42 @@
     if (level >= 1 && level <= 5) return `N${level}`;
     return '';
   }
+
+  async function openKanjiModal(kanji: Kanji) {
+    try {
+      modalOpen = true;
+      svgLoading = true;
+      kanjiSvg = '';
+      
+      // Get detailed kanji information
+      selectedKanji = await invoke('get_kanji', { character: kanji.character });
+      
+      // Get kanji SVG
+      try {
+        kanjiSvg = await invoke('get_kanji_svg', { character: kanji.character });
+      } catch (svgError) {
+        console.warn('SVG not found for', kanji.character, svgError);
+        kanjiSvg = '';
+      }
+      
+      svgLoading = false;
+    } catch (error) {
+      console.error('Error loading kanji details:', error);
+      svgLoading = false;
+    }
+  }
+
+  function closeModal() {
+    modalOpen = false;
+    selectedKanji = null;
+    kanjiSvg = '';
+  }
+
+  function handleKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape' && modalOpen) {
+      closeModal();
+    }
+  }
 </script>
 
 <div class="nav-bar">
@@ -337,7 +389,7 @@
 
     <div class="kanji-grid">
       {#each filteredKanji as kanji}
-        <div class="kanji-card">
+        <div class="kanji-card" on:click={() => openKanjiModal(kanji)} on:keydown={(e) => e.key === 'Enter' && openKanjiModal(kanji)} tabindex="0" role="button">
           <div class="kanji-character">{kanji.character}</div>
           <div class="kanji-info">
             <div class="kanji-readings">
@@ -373,3 +425,93 @@
     </div>
   {/if}
 </main>
+
+<!-- Kanji Details Modal -->
+{#if modalOpen && selectedKanji}
+  <div class="modal-overlay" on:click={closeModal} on:keydown={handleKeydown} tabindex="0" role="dialog" aria-modal="true">
+    <div class="modal-content" on:click|stopPropagation on:keydown|stopPropagation role="document">
+      <div class="modal-header">
+        <h2>Kanji Details</h2>
+        <button class="close-button" on:click={closeModal}>×</button>
+      </div>
+      
+      <div class="modal-body">
+        <div class="modal-left">
+          <div class="modal-kanji-character">{selectedKanji.character}</div>
+          
+          <div class="modal-svg-container">
+            {#if svgLoading}
+              <div class="svg-loading">Loading stroke order...</div>
+            {:else if kanjiSvg}
+              <div class="svg-wrapper">
+                {@html kanjiSvg}
+              </div>
+            {:else}
+              <div class="svg-placeholder">No stroke order available</div>
+            {/if}
+          </div>
+        </div>
+        
+        <div class="modal-right">
+          <div class="modal-info-section">
+            <h3>Readings</h3>
+            {#if selectedKanji.onyomi}
+              <div class="modal-reading">
+                <span class="modal-label">On'yomi:</span> {selectedKanji.onyomi}
+              </div>
+            {/if}
+            {#if selectedKanji.kunyomi}
+              <div class="modal-reading">
+                <span class="modal-label">Kun'yomi:</span> {selectedKanji.kunyomi}
+              </div>
+            {/if}
+            {#if selectedKanji.nanori && selectedKanji.nanori.length > 0}
+              <div class="modal-reading">
+                <span class="modal-label">Nanori:</span> {selectedKanji.nanori.join(', ')}
+              </div>
+            {/if}
+          </div>
+          
+          <div class="modal-info-section">
+            <h3>Meanings</h3>
+            {#if selectedKanji.meanings && selectedKanji.meanings.length > 0}
+              <div class="modal-meanings">
+                {#each selectedKanji.meanings as meaning}
+                  <span class="meaning-tag">{meaning}</span>
+                {/each}
+              </div>
+            {:else}
+              <div class="no-meanings">No meanings available</div>
+            {/if}
+          </div>
+          
+          <div class="modal-info-section">
+            <h3>Properties</h3>
+            <div class="modal-meta">
+              <div class="modal-meta-item">
+                <span class="modal-label">Stroke Count:</span> {selectedKanji.stroke_count}
+              </div>
+              {#if selectedKanji.grade > 0}
+                <div class="modal-meta-item">
+                  <span class="modal-label">Grade:</span> {getGradeLabel(selectedKanji.grade)}
+                </div>
+              {/if}
+              {#if selectedKanji.jlpt_level > 0}
+                <div class="modal-meta-item">
+                  <span class="modal-label">JLPT Level:</span> {getJlptLabel(selectedKanji.jlpt_level)}
+                </div>
+              {/if}
+              {#if selectedKanji.frequency > 0}
+                <div class="modal-meta-item">
+                  <span class="modal-label">Frequency Rank:</span> #{selectedKanji.frequency}
+                </div>
+              {/if}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<svelte:window on:keydown={handleKeydown} />

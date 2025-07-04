@@ -196,8 +196,11 @@ fn get_kanji_svg(character: String, app: AppHandle) -> Result<String, String> {
         let svg_content = std::fs::read_to_string(&svg_path)
             .map_err(|e| format!("Failed to read SVG file: {}", e))?;
         
-        // Return the SVG content directly
-        Ok(svg_content)
+        // Clean up the SVG content by removing XML declaration and DOCTYPE
+        let cleaned_svg = clean_svg_content(&svg_content);
+        
+        // Return the cleaned SVG content
+        Ok(cleaned_svg)
     } else {
         Err(format!("SVG not found for {} (looked at: {:?})", character, svg_path))
     }
@@ -345,6 +348,41 @@ async fn get_best_times(app: AppHandle) -> Result<HashMap<String, u64>, String> 
         .unwrap_or_default();
     
     Ok(game_times.best_times)
+}
+
+fn clean_svg_content(svg_content: &str) -> String {
+    // Remove XML declaration
+    let mut cleaned = svg_content.to_string();
+    
+    // Remove XML declaration (<?xml ... ?>)
+    if let Some(start) = cleaned.find("<?xml") {
+        if let Some(end) = cleaned[start..].find("?>") {
+            cleaned = cleaned[..start].to_string() + &cleaned[start + end + 2..];
+        }
+    }
+    
+    // Remove DOCTYPE declaration (<!DOCTYPE ... ]>)
+    if let Some(start) = cleaned.find("<!DOCTYPE") {
+        if let Some(end) = cleaned[start..].find("]>") {
+            cleaned = cleaned[..start].to_string() + &cleaned[start + end + 2..];
+        }
+    }
+    
+    // Remove any remaining comments at the start
+    while cleaned.trim_start().starts_with("<!--") {
+        if let Some(start) = cleaned.find("<!--") {
+            if let Some(end) = cleaned[start..].find("-->") {
+                cleaned = cleaned[..start].to_string() + &cleaned[start + end + 3..];
+            } else {
+                break;
+            }
+        } else {
+            break;
+        }
+    }
+    
+    // Trim whitespace
+    cleaned.trim().to_string()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
