@@ -10,6 +10,7 @@
     <button on:click={() => goto('/kana_view')}>Go to Kana View</button>
     <button on:click={() => goto('/kana_game')}>Play Kana Speed Game</button>
     <button on:click={() => goto('/kanji_view')}>Browse Kanji Database</button>
+    <button on:click={() => goto('/flashcards')}>Kanji Flashcards (SRS)</button>
     <button on:click={() => goto('/settings')}>Settings</button>
   </div>
 </main>
