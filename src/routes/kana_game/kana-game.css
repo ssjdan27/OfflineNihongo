@@ -59,6 +59,17 @@
   margin-bottom: 1.5rem;
 }
 
+.setting-group {
+  margin-bottom: 2rem;
+}
+
+.setting-group h3 {
+  color: var(--text-color, #000);
+  margin-bottom: 1rem;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
 .mode-buttons {
   display: flex;
   flex-direction: column;
@@ -76,6 +87,7 @@
   color: var(--text-color, #000);
   transition: all 0.3s ease;
   position: relative;
+  text-align: center;
 }
 
 .mode-button:hover {
@@ -89,52 +101,99 @@
   color: white;
 }
 
-.best-time {
+.mode-button .subtitle {
   font-size: 0.9rem;
   margin-top: 0.5rem;
   opacity: 0.8;
+  font-weight: normal;
 }
 
-.start-button {
-  padding: 1rem 3rem;
-  font-size: 1.3rem;
-  font-weight: bold;
+.mode-button.active .subtitle {
+  opacity: 1;
+}
+
+.checkbox-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.checkbox-button {
+  display: flex;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  font-size: 1rem;
+  background-color: var(--section-bg, #fff);
+  border: 2px solid var(--border-color, #e0e0e0);
+  border-radius: 10px;
+  cursor: pointer;
+  color: var(--text-color, #000);
+  transition: all 0.3s ease;
+  text-align: left;
+}
+
+.checkbox-button:hover {
+  border-color: var(--accent-color, #396cd8);
+  background-color: var(--button-hover-bg, #f0f4ff);
+}
+
+.checkbox-button.active {
+  border-color: var(--accent-color, #396cd8);
   background-color: var(--accent-color, #396cd8);
   color: white;
-  border: none;
-  border-radius: 12px;
-  cursor: pointer;
+}
+
+.checkbox-indicator {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--border-color, #ccc);
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 12px;
+  font-size: 14px;
+  font-weight: bold;
   transition: all 0.3s ease;
-  margin-bottom: 2rem;
+  flex-shrink: 0;
 }
 
-.start-button:hover {
-  background-color: var(--accent-hover, #2557c7);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(57, 108, 216, 0.3);
+.checkbox-button.active .checkbox-indicator {
+  border-color: white;
+  background-color: white;
+  color: var(--accent-color, #396cd8);
 }
 
-.instructions {
-  text-align: left;
+.checkbox-button .subtitle {
+  font-size: 0.85rem;
+  margin-top: 0.25rem;
+  opacity: 0.8;
+  font-weight: normal;
+  font-style: italic;
+}
+
+.checkbox-button.active .subtitle {
+  opacity: 1;
+}
+
+.game-preview {
   background-color: var(--section-bg, #f8f9fa);
   padding: 1.5rem;
   border-radius: 12px;
   border: 1px solid var(--border-color, #e0e0e0);
+  margin-bottom: 2rem;
 }
 
-.instructions h3 {
+.preview-info {
+  font-size: 1.1rem;
   color: var(--text-color, #000);
-  margin-bottom: 1rem;
-}
-
-.instructions ul {
-  color: var(--text-color, #000);
-  margin: 0;
-  padding-left: 1.5rem;
-}
-
-.instructions li {
   margin-bottom: 0.5rem;
+}
+
+.current-best {
+  font-size: 1rem;
+  color: var(--accent-color, #396cd8);
+  font-weight: 600;
 }
 
 /* Game Screen */
@@ -234,6 +293,36 @@
 
 .submit-button:hover {
   background-color: var(--accent-hover, #2557c7);
+}
+
+.start-button {
+  padding: 1rem 2rem;
+  font-size: 1.1rem;
+  background-color: var(--accent-color, #396cd8);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.start-button:hover {
+  background-color: var(--accent-hover, #2557c7);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(57, 108, 216, 0.3);
+}
+
+.start-button:disabled {
+  background-color: var(--border-color, #ccc);
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.start-button:disabled:hover {
+  background-color: var(--border-color, #ccc);
+  transform: none;
+  box-shadow: none;
 }
 
 .game-actions {

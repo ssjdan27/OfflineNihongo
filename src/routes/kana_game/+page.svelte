@@ -8,6 +8,8 @@
     character: string;
     romaji: string;
     kana_type: string;
+    sound_type: string;
+    complexity: string;
   }
 
   let kanaData: KanaChar[] = [];
@@ -16,6 +18,8 @@
   
   // Game settings
   let gameMode: 'hiragana' | 'katakana' | 'mixed' = 'hiragana';
+  let soundTypes: string[] = ['seion']; // Can include: seion, dakuon, handakuon
+  let complexity: 'basic' | 'combination' | 'mixed' = 'basic';
   let gameStarted = false;
   let gameCompleted = false;
   
@@ -35,9 +39,25 @@
   
   // Results
   let bestTimes = {
-    hiragana: localStorage.getItem('best-hiragana-time') ? parseInt(localStorage.getItem('best-hiragana-time')!) : null,
-    katakana: localStorage.getItem('best-katakana-time') ? parseInt(localStorage.getItem('best-katakana-time')!) : null,
-    mixed: localStorage.getItem('best-mixed-time') ? parseInt(localStorage.getItem('best-mixed-time')!) : null
+    'hiragana-seion-basic': localStorage.getItem('best-hiragana-seion-basic-time') ? parseInt(localStorage.getItem('best-hiragana-seion-basic-time')!) : null,
+    'hiragana-seion-combination': localStorage.getItem('best-hiragana-seion-combination-time') ? parseInt(localStorage.getItem('best-hiragana-seion-combination-time')!) : null,
+    'hiragana-dakuon-basic': localStorage.getItem('best-hiragana-dakuon-basic-time') ? parseInt(localStorage.getItem('best-hiragana-dakuon-basic-time')!) : null,
+    'hiragana-dakuon-combination': localStorage.getItem('best-hiragana-dakuon-combination-time') ? parseInt(localStorage.getItem('best-hiragana-dakuon-combination-time')!) : null,
+    'hiragana-handakuon-basic': localStorage.getItem('best-hiragana-handakuon-basic-time') ? parseInt(localStorage.getItem('best-hiragana-handakuon-basic-time')!) : null,
+    'hiragana-handakuon-combination': localStorage.getItem('best-hiragana-handakuon-combination-time') ? parseInt(localStorage.getItem('best-hiragana-handakuon-combination-time')!) : null,
+    'katakana-seion-basic': localStorage.getItem('best-katakana-seion-basic-time') ? parseInt(localStorage.getItem('best-katakana-seion-basic-time')!) : null,
+    'katakana-seion-combination': localStorage.getItem('best-katakana-seion-combination-time') ? parseInt(localStorage.getItem('best-katakana-seion-combination-time')!) : null,
+    'katakana-dakuon-basic': localStorage.getItem('best-katakana-dakuon-basic-time') ? parseInt(localStorage.getItem('best-katakana-dakuon-basic-time')!) : null,
+    'katakana-dakuon-combination': localStorage.getItem('best-katakana-dakuon-combination-time') ? parseInt(localStorage.getItem('best-katakana-dakuon-combination-time')!) : null,
+    'katakana-handakuon-basic': localStorage.getItem('best-katakana-handakuon-basic-time') ? parseInt(localStorage.getItem('best-katakana-handakuon-basic-time')!) : null,
+    'katakana-handakuon-combination': localStorage.getItem('best-katakana-handakuon-combination-time') ? parseInt(localStorage.getItem('best-katakana-handakuon-combination-time')!) : null,
+    // Mixed modes
+    'mixed-seion-basic': localStorage.getItem('best-mixed-seion-basic-time') ? parseInt(localStorage.getItem('best-mixed-seion-basic-time')!) : null,
+    'mixed-seion-combination': localStorage.getItem('best-mixed-seion-combination-time') ? parseInt(localStorage.getItem('best-mixed-seion-combination-time')!) : null,
+    'mixed-dakuon-basic': localStorage.getItem('best-mixed-dakuon-basic-time') ? parseInt(localStorage.getItem('best-mixed-dakuon-basic-time')!) : null,
+    'mixed-dakuon-combination': localStorage.getItem('best-mixed-dakuon-combination-time') ? parseInt(localStorage.getItem('best-mixed-dakuon-combination-time')!) : null,
+    'mixed-handakuon-basic': localStorage.getItem('best-mixed-handakuon-basic-time') ? parseInt(localStorage.getItem('best-mixed-handakuon-basic-time')!) : null,
+    'mixed-handakuon-combination': localStorage.getItem('best-mixed-handakuon-combination-time') ? parseInt(localStorage.getItem('best-mixed-handakuon-combination-time')!) : null,
   };
 
   onMount(async () => {
@@ -59,16 +79,24 @@
   }
 
   function startGame() {
-    // Filter kana based on game mode
-    let filteredKana = [];
-    if (gameMode === 'mixed') {
-      filteredKana = [...kanaData];
-    } else {
-      filteredKana = kanaData.filter(k => k.kana_type === gameMode);
+    // Filter kana based on game mode, sound types, and complexity
+    let filteredKana = [...kanaData];
+    
+    // Filter by kana type (hiragana/katakana/mixed)
+    if (gameMode !== 'mixed') {
+      filteredKana = filteredKana.filter(k => k.kana_type === gameMode);
+    }
+    
+    // Filter by sound types
+    filteredKana = filteredKana.filter(k => soundTypes.includes(k.sound_type));
+    
+    // Filter by complexity
+    if (complexity !== 'mixed') {
+      filteredKana = filteredKana.filter(k => k.complexity === complexity);
     }
     
     // Shuffle the kana
-    gameKana = shuffleArray([...filteredKana]);
+    gameKana = shuffleArray(filteredKana);
     
     // Reset game state
     currentIndex = 0;
@@ -141,12 +169,48 @@
     
     const finalTime = endTime - startTime;
     
+    // Generate key for best time based on current settings
+    const gameKey = generateGameKey();
+    
     // Check if this is a new best time
-    const currentBest = bestTimes[gameMode];
+    const currentBest = bestTimes[gameKey];
     if (!currentBest || finalTime < currentBest) {
-      bestTimes[gameMode] = finalTime;
-      localStorage.setItem(`best-${gameMode}-time`, finalTime.toString());
+      bestTimes[gameKey] = finalTime;
+      localStorage.setItem(`best-${gameKey}-time`, finalTime.toString());
     }
+  }
+
+  function generateGameKey(): string {
+    const soundTypeKey = soundTypes.length === 1 ? soundTypes[0] : 'mixed';
+    return `${gameMode}-${soundTypeKey}-${complexity}`;
+  }
+
+  function toggleSoundType(type: string) {
+    if (soundTypes.includes(type)) {
+      soundTypes = soundTypes.filter(t => t !== type);
+    } else {
+      soundTypes = [...soundTypes, type];
+    }
+    // Ensure at least one sound type is selected
+    if (soundTypes.length === 0) {
+      soundTypes = ['seion'];
+    }
+  }
+
+  function getFilteredKanaCount(): number {
+    let filtered = [...kanaData];
+    
+    if (gameMode !== 'mixed') {
+      filtered = filtered.filter(k => k.kana_type === gameMode);
+    }
+    
+    filtered = filtered.filter(k => soundTypes.includes(k.sound_type));
+    
+    if (complexity !== 'mixed') {
+      filtered = filtered.filter(k => k.complexity === complexity);
+    }
+    
+    return filtered.length;
   }
 
   function resetGame() {
@@ -201,49 +265,120 @@
     <!-- Game Setup Screen -->
     <div class="setup-screen">
       <div class="game-mode-selection">
-        <h2>Choose Game Mode</h2>
-        <div class="mode-buttons">
-          <button 
-            class="mode-button {gameMode === 'hiragana' ? 'active' : ''}"
-            on:click={() => gameMode = 'hiragana'}
-          >
-            Hiragana Only
-            {#if bestTimes.hiragana}
-              <div class="best-time">Best: {formatTime(bestTimes.hiragana)}</div>
-            {/if}
-          </button>
-          <button 
-            class="mode-button {gameMode === 'katakana' ? 'active' : ''}"
-            on:click={() => gameMode = 'katakana'}
-          >
-            Katakana Only
-            {#if bestTimes.katakana}
-              <div class="best-time">Best: {formatTime(bestTimes.katakana)}</div>
-            {/if}
-          </button>
-          <button 
-            class="mode-button {gameMode === 'mixed' ? 'active' : ''}"
-            on:click={() => gameMode = 'mixed'}
-          >
-            Mixed (Both)
-            {#if bestTimes.mixed}
-              <div class="best-time">Best: {formatTime(bestTimes.mixed)}</div>
-            {/if}
-          </button>
+        <h2>Choose Game Settings</h2>
+        
+        <!-- Kana Type Selection -->
+        <div class="setting-group">
+          <h3>Kana Type</h3>
+          <div class="mode-buttons">
+            <button 
+              class="mode-button {gameMode === 'hiragana' ? 'active' : ''}"
+              on:click={() => gameMode = 'hiragana'}
+            >
+              Hiragana Only
+            </button>
+            <button 
+              class="mode-button {gameMode === 'katakana' ? 'active' : ''}"
+              on:click={() => gameMode = 'katakana'}
+            >
+              Katakana Only
+            </button>
+            <button 
+              class="mode-button {gameMode === 'mixed' ? 'active' : ''}"
+              on:click={() => gameMode = 'mixed'}
+            >
+              Mixed (Both)
+            </button>
+          </div>
+        </div>
+
+        <!-- Sound Type Selection -->
+        <div class="setting-group">
+          <h3>Sound Types</h3>
+          <div class="checkbox-buttons">
+            <button 
+              class="checkbox-button {soundTypes.includes('seion') ? 'active' : ''}"
+              on:click={() => toggleSoundType('seion')}
+            >
+              <span class="checkbox-indicator">{soundTypes.includes('seion') ? '✓' : ''}</span>
+              Seion (Basic)
+              <div class="subtitle">あ か さ た な は ま や ら わ</div>
+            </button>
+            <button 
+              class="checkbox-button {soundTypes.includes('dakuon') ? 'active' : ''}"
+              on:click={() => toggleSoundType('dakuon')}
+            >
+              <span class="checkbox-indicator">{soundTypes.includes('dakuon') ? '✓' : ''}</span>
+              Dakuon (Voiced)
+              <div class="subtitle">が ざ だ ば</div>
+            </button>
+            <button 
+              class="checkbox-button {soundTypes.includes('handakuon') ? 'active' : ''}"
+              on:click={() => toggleSoundType('handakuon')}
+            >
+              <span class="checkbox-indicator">{soundTypes.includes('handakuon') ? '✓' : ''}</span>
+              Handakuon (Semi-voiced)
+              <div class="subtitle">ぱ ぴ ぷ ぺ ぽ</div>
+            </button>
+          </div>
+        </div>
+
+        <!-- Complexity Selection -->
+        <div class="setting-group">
+          <h3>Complexity Level</h3>
+          <div class="mode-buttons">
+            <button 
+              class="mode-button {complexity === 'basic' ? 'active' : ''}"
+              on:click={() => complexity = 'basic'}
+            >
+              Basic Characters
+              <div class="subtitle">Single sounds (あ, か, etc.)</div>
+            </button>
+            <button 
+              class="mode-button {complexity === 'combination' ? 'active' : ''}"
+              on:click={() => complexity = 'combination'}
+            >
+              Combination Characters
+              <div class="subtitle">ya/yu/yo combinations (きゃ, しゅ, etc.)</div>
+            </button>
+            <button 
+              class="mode-button {complexity === 'mixed' ? 'active' : ''}"
+              on:click={() => complexity = 'mixed'}
+            >
+              Mixed (Both)
+            </button>
+          </div>
+        </div>
+
+        <!-- Game Preview -->
+        <div class="game-preview">
+          <div class="preview-info">
+            <strong>Game Preview:</strong> {getFilteredKanaCount()} characters selected
+          </div>
+          {#if bestTimes[generateGameKey()]}
+            <div class="current-best">
+              Current Best: {formatTime(bestTimes[generateGameKey()])}
+            </div>
+          {/if}
         </div>
       </div>
       
-      <button class="start-button" on:click={startGame}>
+      <button 
+        class="start-button" 
+        on:click={startGame}
+        disabled={getFilteredKanaCount() === 0}
+      >
         Start Game
       </button>
       
       <div class="instructions">
         <h3>How to Play:</h3>
         <ul>
+          <li>Select your preferred kana type, sound types, and complexity level</li>
           <li>Type the romaji (English letters) for each kana character shown</li>
-          <li>Press Enter or the input will auto-advance when correct</li>
+          <li>The game auto-advances when you type correctly</li>
           <li>Try to complete all characters as fast as possible!</li>
-          <li>Your best times are saved automatically</li>
+          <li>Your best times are saved for each combination of settings</li>
         </ul>
       </div>
     </div>

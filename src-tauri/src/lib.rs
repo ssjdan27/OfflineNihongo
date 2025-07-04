@@ -34,6 +34,8 @@ struct KanaChar {
     character: String,
     romaji: String,
     kana_type: String, // "hiragana" or "katakana"
+    sound_type: String, // "seion", "dakuon", "handakuon"
+    complexity: String, // "basic" (single), "combination" (ya/yu/yo)
 }
 
 #[command]
@@ -230,18 +232,35 @@ fn get_kana_data(app: AppHandle) -> Result<Vec<KanaChar>, String> {
             if let Some(vowel_obj) = vowel_group.as_object() {
                 for (_vowel, types) in vowel_obj {
                     if let Some(types_obj) = types.as_object() {
-                        for (_type_name, kana_info) in types_obj {
+                        for (type_name, kana_info) in types_obj {
                             if let Some(kana_obj) = kana_info.as_object() {
                                 if let (Some(hiragana), Some(katakana), Some(romaji)) = (
                                     kana_obj.get("Hiragana").and_then(|v| v.as_str()),
                                     kana_obj.get("Katakana").and_then(|v| v.as_str()),
                                     kana_obj.get("Romaji").and_then(|v| v.as_str()),
                                 ) {
+                                    // Determine sound type
+                                    let sound_type = match type_name.as_str() {
+                                        "Seion" => "seion",
+                                        "Dakuon" => "dakuon", 
+                                        "Handakuon" => "handakuon",
+                                        _ => "seion"
+                                    }.to_string();
+                                    
+                                    // Determine complexity based on romaji length
+                                    let complexity = if romaji.len() > 2 {
+                                        "combination"
+                                    } else {
+                                        "basic"
+                                    }.to_string();
+                                    
                                     // Add hiragana
                                     kana_list.push(KanaChar {
                                         character: hiragana.to_string(),
                                         romaji: romaji.to_string(),
                                         kana_type: "hiragana".to_string(),
+                                        sound_type: sound_type.clone(),
+                                        complexity: complexity.clone(),
                                     });
                                     
                                     // Add katakana
@@ -249,6 +268,8 @@ fn get_kana_data(app: AppHandle) -> Result<Vec<KanaChar>, String> {
                                         character: katakana.to_string(),
                                         romaji: romaji.to_string(),
                                         kana_type: "katakana".to_string(),
+                                        sound_type,
+                                        complexity,
                                     });
                                 }
                             }
@@ -270,5 +291,5 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![get_kanji, get_all_kanji, get_kanji_svg, get_kana_data])
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .expect("error while running tauri application :(");
 }
