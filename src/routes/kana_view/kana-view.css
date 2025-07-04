@@ -171,55 +171,384 @@ button:hover {
   font-weight: normal;
 }
 
+/* Modal Styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.modal-content {
+  background-color: var(--section-bg, #fff);
+  border-radius: 12px;
+  max-width: 900px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  position: relative;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem 2rem;
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+}
+
+.modal-header h2 {
+  margin: 0;
+  color: var(--text-color, #000);
+  font-size: 1.5rem;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 2rem;
+  cursor: pointer;
+  color: var(--text-muted, #666);
+  line-height: 1;
+  padding: 0.25rem;
+  border-radius: 50%;
+  width: 2.5rem;
+  height: 2.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.modal-close:hover {
+  background-color: var(--button-hover-bg, #e0e0e0);
+  color: var(--text-color, #000);
+}
+
+.modal-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  padding: 2rem;
+}
+
+.modal-left {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.modal-kana-character {
+  font-size: 6rem;
+  font-weight: bold;
+  color: var(--accent-color, #396cd8);
+  margin-bottom: 2rem;
+  line-height: 1;
+}
+
+.modal-svg-container {
+  width: 100%;
+  max-width: 300px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 8px;
+  background-color: var(--section-bg, #f8f9fa);
+}
+
+.svg-wrapper {
+  width: 100%;
+  min-height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background-color: white;
+}
+
+.svg-wrapper :global(svg) {
+  max-width: 100%;
+  max-height: 260px;
+  width: auto;
+  height: auto;
+  display: block;
+}
+
+/* AnimCJK SVG Styling - exactly matching kanji styling */
+.svg-wrapper :global(svg.acjk) {
+  width: 300px !important;
+  height: 300px !important;
+  background-color: white !important;
+  border-radius: 4px;
+  display: block !important;
+  margin: 0 auto !important;
+}
+
+/* Static background strokes - light gray outline */
+.svg-wrapper :global(svg.acjk path[id]) {
+  fill: none !important;
+  stroke: #ddd !important;
+  stroke-width: 28 !important;
+  opacity: 0.4 !important;
+  stroke-linecap: round !important;
+  stroke-linejoin: round !important;
+}
+
+/* Animated strokes - black, thick, visible */
+.svg-wrapper :global(svg.acjk path[clip-path]) {
+  stroke: #000 !important;
+  stroke-width: 30 !important;
+  stroke-linecap: round !important;
+  stroke-linejoin: round !important;
+  fill: none !important;
+  opacity: 1 !important;
+  stroke-dasharray: none !important;
+  stroke-dashoffset: 0 !important;
+}
+
+/* Override AnimCJK styles for better visibility - all paths thick and black */
+.svg-wrapper svg path {
+  stroke: #000 !important;
+  stroke-width: 30 !important;
+  fill: none !important;
+  stroke-linecap: round !important;
+  stroke-linejoin: round !important;
+}
+
+.svg-loading, .svg-placeholder {
+  color: var(--text-muted, #666);
+  font-style: italic;
+  text-align: center;
+  padding: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+}
+
+.modal-right {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.modal-info-section h3 {
+  margin: 0 0 1rem 0;
+  color: var(--text-color, #000);
+  font-size: 1.25rem;
+  border-bottom: 2px solid var(--accent-color, #396cd8);
+  padding-bottom: 0.5rem;
+}
+
+.modal-reading {
+  margin-bottom: 0.75rem;
+  color: var(--text-color, #000);
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.modal-label {
+  font-weight: 600;
+  color: var(--text-muted, #666);
+  min-width: 80px;
+  display: inline-block;
+}
+
+/* Animation Controls */
+.animation-controls {
+  margin: 0;
+  padding: 0.75rem;
+  background-color: var(--section-bg, #f8f9fa);
+  border-top: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 0 0 8px 8px;
+}
+
+.animation-buttons {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.control-btn {
+  padding: 0.4rem 0.8rem;
+  font-size: 0.85rem;
+  background-color: var(--button-bg, #fff);
+  border: 1px solid var(--button-border, #ccc);
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text-color, #000);
+  transition: all 0.2s ease;
+  font-weight: 500;
+  min-width: 60px;
+}
+
+.control-btn:hover:not(:disabled) {
+  background-color: var(--button-hover-bg, #e0e0e0);
+  transform: translateY(-1px);
+}
+
+.control-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.control-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background-color: var(--button-disabled-bg, #f5f5f5);
+  color: var(--text-muted, #666);
+}
+
+.animation-info {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 0.75rem;
+}
+
+.stroke-counter {
+  font-size: 0.85rem;
+  color: var(--text-muted, #666);
+  font-weight: 500;
+}
+
+.speed-control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.speed-control label {
+  font-size: 0.85rem;
+  color: var(--text-color, #000);
+  font-weight: 500;
+}
+
+.speed-control input[type="range"] {
+  width: 120px;
+  height: 5px;
+  background: var(--border-color, #e0e0e0);
+  border-radius: 3px;
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.speed-control input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  background: var(--accent-color, #396cd8);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.speed-control input[type="range"]::-webkit-slider-thumb:hover {
+  background: var(--accent-color-hover, #2851b8);
+  transform: scale(1.1);
+}
+
+.speed-control input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  background: var(--accent-color, #396cd8);
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s ease;
+}
+
+.speed-control input[type="range"]::-moz-range-thumb:hover {
+  background: var(--accent-color-hover, #2851b8);
+  transform: scale(1.1);
+}
+
+.speed-control span {
+  font-size: 0.85rem;
+  color: var(--text-muted, #666);
+  font-weight: 500;
+  min-width: 2.5rem;
+  text-align: center;
+}
+
+/* Responsive modal styles */
 @media (max-width: 768px) {
-  .kana-chart-container {
-    padding: 1rem;
+  .modal-content {
+    width: 95%;
+    max-height: 95vh;
+    margin: 1rem;
+    max-height: calc(100vh - 2rem);
   }
   
-  .section-container {
+  .modal-body {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+    padding: 1.5rem;
+  }
+  
+  .modal-header {
+    padding: 1rem 1.5rem;
+  }
+  
+  .modal-header h2 {
+    font-size: 1.5rem;
+  }
+  
+  .modal-kana-character {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+  }
+  
+  .modal-svg-container {
+    min-height: 250px;
+  }
+  
+  .svg-wrapper {
+    height: 250px;
+    margin-bottom: 1rem;
+  }
+  
+  .animation-controls {
+    padding: 0.5rem;
+  }
+  
+  .animation-buttons {
     flex-direction: column;
-    gap: 0.5rem;
-    align-items: center;
+    gap: 0.4rem;
+    justify-content: center;
   }
   
-  .section-container button {
-    min-width: 200px;
-  }
-  
-  .header-cell {
-    font-size: 0.9rem;
-    padding: 0.3rem;
-    min-width: 40px;
-  }
-  
-  .header-cell:first-child {
-    min-width: 40px;
-    max-width: 40px;
-    flex: 0 0 40px;
-  }
-  
-  .row-label {
-    font-size: 0.9rem;
-    padding: 0.3rem;
-    min-width: 40px;
-    max-width: 40px;
-    flex: 0 0 40px;
-  }
-  
-  .kana-cell {
+  .control-btn {
+    width: 100%;
+    padding: 0.75rem;
+    font-size: 0.75rem;
     min-width: 50px;
   }
   
-  .kana-button {
-    min-height: 60px;
-    padding: 0.3rem;
+  .speed-control {
+    flex-direction: column;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    justify-content: center;
   }
   
-  .kana-char {
-    font-size: 1.4rem;
+  .speed-control input[type="range"] {
+    width: 100px;
   }
   
-  .romaji {
-    font-size: 0.7rem;
+  .stroke-counter, .speed-control label, .speed-control span {
+    font-size: 0.75rem;
   }
 }
