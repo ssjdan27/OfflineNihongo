@@ -1,7 +1,9 @@
 use rusqlite::{Connection, Result};
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 use std::path::PathBuf;
-use tauri::{command, AppHandle, Manager};
+use std::fs;
+use std::collections::HashMap;
+use tauri::{AppHandle, Manager};
 
 #[derive(Serialize)]
 struct Kanji {
@@ -38,7 +40,12 @@ struct KanaChar {
     complexity: String, // "basic" (single), "combination" (ya/yu/yo)
 }
 
-#[command]
+#[derive(Serialize, Deserialize, Default)]
+struct GameTimes {
+    best_times: HashMap<String, u64>,
+}
+
+#[tauri::command]
 fn get_all_kanji(app: AppHandle) -> Result<Vec<Kanji>, String> {
     println!("Fetching all kanji from database");
 
@@ -94,7 +101,7 @@ fn get_all_kanji(app: AppHandle) -> Result<Vec<Kanji>, String> {
     Ok(kanji_list)
 }
 
-#[command]
+#[tauri::command]
 fn get_kanji(character: String, app: AppHandle) -> Result<KanjiLookup, String> {
     println!("Searching for kanji: {}", character);
 
@@ -196,7 +203,7 @@ fn get_kanji_svg(character: String, app: AppHandle) -> Result<String, String> {
     }
 }
 
-#[command]
+#[tauri::command]
 fn get_kana_data(app: AppHandle) -> Result<Vec<KanaChar>, String> {
     println!("Fetching kana data from JSON file");
 
@@ -284,12 +291,68 @@ fn get_kana_data(app: AppHandle) -> Result<Vec<KanaChar>, String> {
     Ok(kana_list)
 }
 
+#[tauri::command]
+async fn save_best_time(app: AppHandle, game_key: String, time_ms: u64) -> Result<(), String> {
+    let app_dir = app.path().app_local_data_dir()
+        .map_err(|e| format!("Failed to get app directory: {}", e))?;
+    
+    // Create app directory if it doesn't exist
+    fs::create_dir_all(&app_dir)
+        .map_err(|e| format!("Failed to create app directory: {}", e))?;
+    
+    let times_file = app_dir.join("game_times.json");
+    
+    // Load existing times or create new
+    let mut game_times = if times_file.exists() {
+        let content = fs::read_to_string(&times_file)
+            .map_err(|e| format!("Failed to read times file: {}", e))?;
+        serde_json::from_str(&content)
+            .unwrap_or_default()
+    } else {
+        GameTimes::default()
+    };
+    
+    // Update best time if this is better
+    let current_best = game_times.best_times.get(&game_key).copied().unwrap_or(u64::MAX);
+    if time_ms < current_best {
+        game_times.best_times.insert(game_key, time_ms);
+        
+        // Save updated times
+        let content = serde_json::to_string_pretty(&game_times)
+            .map_err(|e| format!("Failed to serialize times: {}", e))?;
+        fs::write(&times_file, content)
+            .map_err(|e| format!("Failed to write times file: {}", e))?;
+    }
+    
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_best_times(app: AppHandle) -> Result<HashMap<String, u64>, String> {
+    let app_dir = app.path().app_local_data_dir()
+        .map_err(|e| format!("Failed to get app directory: {}", e))?;
+    
+    let times_file = app_dir.join("game_times.json");
+    
+    if !times_file.exists() {
+        return Ok(HashMap::new());
+    }
+    
+    let content = fs::read_to_string(&times_file)
+        .map_err(|e| format!("Failed to read times file: {}", e))?;
+    
+    let game_times: GameTimes = serde_json::from_str(&content)
+        .unwrap_or_default();
+    
+    Ok(game_times.best_times)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
-        .invoke_handler(tauri::generate_handler![get_kanji, get_all_kanji, get_kanji_svg, get_kana_data])
+        .invoke_handler(tauri::generate_handler![get_kanji, get_all_kanji, get_kanji_svg, get_kana_data, save_best_time, get_best_times])
         .run(tauri::generate_context!())
         .expect("error while running tauri application :(");
 }

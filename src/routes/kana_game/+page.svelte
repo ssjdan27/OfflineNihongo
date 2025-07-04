@@ -38,30 +38,65 @@
   let timerInterval: ReturnType<typeof setInterval>;
   
   // Results
-  let bestTimes = {
-    'hiragana-seion-basic': localStorage.getItem('best-hiragana-seion-basic-time') ? parseInt(localStorage.getItem('best-hiragana-seion-basic-time')!) : null,
-    'hiragana-seion-combination': localStorage.getItem('best-hiragana-seion-combination-time') ? parseInt(localStorage.getItem('best-hiragana-seion-combination-time')!) : null,
-    'hiragana-dakuon-basic': localStorage.getItem('best-hiragana-dakuon-basic-time') ? parseInt(localStorage.getItem('best-hiragana-dakuon-basic-time')!) : null,
-    'hiragana-dakuon-combination': localStorage.getItem('best-hiragana-dakuon-combination-time') ? parseInt(localStorage.getItem('best-hiragana-dakuon-combination-time')!) : null,
-    'hiragana-handakuon-basic': localStorage.getItem('best-hiragana-handakuon-basic-time') ? parseInt(localStorage.getItem('best-hiragana-handakuon-basic-time')!) : null,
-    'hiragana-handakuon-combination': localStorage.getItem('best-hiragana-handakuon-combination-time') ? parseInt(localStorage.getItem('best-hiragana-handakuon-combination-time')!) : null,
-    'katakana-seion-basic': localStorage.getItem('best-katakana-seion-basic-time') ? parseInt(localStorage.getItem('best-katakana-seion-basic-time')!) : null,
-    'katakana-seion-combination': localStorage.getItem('best-katakana-seion-combination-time') ? parseInt(localStorage.getItem('best-katakana-seion-combination-time')!) : null,
-    'katakana-dakuon-basic': localStorage.getItem('best-katakana-dakuon-basic-time') ? parseInt(localStorage.getItem('best-katakana-dakuon-basic-time')!) : null,
-    'katakana-dakuon-combination': localStorage.getItem('best-katakana-dakuon-combination-time') ? parseInt(localStorage.getItem('best-katakana-dakuon-combination-time')!) : null,
-    'katakana-handakuon-basic': localStorage.getItem('best-katakana-handakuon-basic-time') ? parseInt(localStorage.getItem('best-katakana-handakuon-basic-time')!) : null,
-    'katakana-handakuon-combination': localStorage.getItem('best-katakana-handakuon-combination-time') ? parseInt(localStorage.getItem('best-katakana-handakuon-combination-time')!) : null,
+  type BestTimesKey = 
+    | 'hiragana-seion-basic' | 'hiragana-seion-combination' | 'hiragana-seion-mixed'
+    | 'hiragana-dakuon-basic' | 'hiragana-dakuon-combination' | 'hiragana-dakuon-mixed'
+    | 'hiragana-handakuon-basic' | 'hiragana-handakuon-combination' | 'hiragana-handakuon-mixed'
+    | 'hiragana-mixed-basic' | 'hiragana-mixed-combination' | 'hiragana-mixed-mixed'
+    | 'katakana-seion-basic' | 'katakana-seion-combination' | 'katakana-seion-mixed'
+    | 'katakana-dakuon-basic' | 'katakana-dakuon-combination' | 'katakana-dakuon-mixed'
+    | 'katakana-handakuon-basic' | 'katakana-handakuon-combination' | 'katakana-handakuon-mixed'
+    | 'katakana-mixed-basic' | 'katakana-mixed-combination' | 'katakana-mixed-mixed'
+    | 'mixed-seion-basic' | 'mixed-seion-combination' | 'mixed-seion-mixed'
+    | 'mixed-dakuon-basic' | 'mixed-dakuon-combination' | 'mixed-dakuon-mixed'
+    | 'mixed-handakuon-basic' | 'mixed-handakuon-combination' | 'mixed-handakuon-mixed'
+    | 'mixed-mixed-basic' | 'mixed-mixed-combination' | 'mixed-mixed-mixed';
+
+    // pull times from tauri file system
+
+  let bestTimes: Record<BestTimesKey, number | null> = {
+    'hiragana-seion-basic': null,
+    'hiragana-seion-combination': null,
+    'hiragana-seion-mixed': null,
+    'hiragana-dakuon-basic': null,
+    'hiragana-dakuon-combination': null,
+    'hiragana-dakuon-mixed': null,
+    'hiragana-handakuon-basic': null,
+    'hiragana-handakuon-combination': null,
+    'hiragana-handakuon-mixed': null,
+    'hiragana-mixed-basic': null,
+    'hiragana-mixed-combination': null,
+    'hiragana-mixed-mixed': null,
+    'katakana-seion-basic': null,
+    'katakana-seion-combination': null,
+    'katakana-seion-mixed': null,
+    'katakana-dakuon-basic': null,
+    'katakana-dakuon-combination': null,
+    'katakana-dakuon-mixed': null,
+    'katakana-handakuon-basic': null,
+    'katakana-handakuon-combination': null,
+    'katakana-handakuon-mixed': null,
+    'katakana-mixed-basic': null,
+    'katakana-mixed-combination': null,
+    'katakana-mixed-mixed': null,
     // Mixed modes
-    'mixed-seion-basic': localStorage.getItem('best-mixed-seion-basic-time') ? parseInt(localStorage.getItem('best-mixed-seion-basic-time')!) : null,
-    'mixed-seion-combination': localStorage.getItem('best-mixed-seion-combination-time') ? parseInt(localStorage.getItem('best-mixed-seion-combination-time')!) : null,
-    'mixed-dakuon-basic': localStorage.getItem('best-mixed-dakuon-basic-time') ? parseInt(localStorage.getItem('best-mixed-dakuon-basic-time')!) : null,
-    'mixed-dakuon-combination': localStorage.getItem('best-mixed-dakuon-combination-time') ? parseInt(localStorage.getItem('best-mixed-dakuon-combination-time')!) : null,
-    'mixed-handakuon-basic': localStorage.getItem('best-mixed-handakuon-basic-time') ? parseInt(localStorage.getItem('best-mixed-handakuon-basic-time')!) : null,
-    'mixed-handakuon-combination': localStorage.getItem('best-mixed-handakuon-combination-time') ? parseInt(localStorage.getItem('best-mixed-handakuon-combination-time')!) : null,
+    'mixed-seion-basic': null,
+    'mixed-seion-combination': null,
+    'mixed-seion-mixed': null,
+    'mixed-dakuon-basic': null,
+    'mixed-dakuon-combination': null,
+    'mixed-dakuon-mixed': null,
+    'mixed-handakuon-basic': null,
+    'mixed-handakuon-combination': null,
+    'mixed-handakuon-mixed': null,
+    'mixed-mixed-basic': null,
+    'mixed-mixed-combination': null,
+    'mixed-mixed-mixed': null,
   };
 
   onMount(async () => {
     await loadKanaData();
+    await loadBestTimes();
   });
 
   async function loadKanaData() {
@@ -75,6 +110,30 @@
       console.error('Error loading kana data:', err);
     } finally {
       loading = false;
+    }
+  }
+
+  async function loadBestTimes() {
+    try {
+      const times = await invoke('get_best_times') as Record<string, number>;
+      
+      // Convert to our typed format
+      Object.keys(times).forEach(key => {
+        if (key in bestTimes) {
+          bestTimes[key as BestTimesKey] = times[key];
+        }
+      });
+    } catch (err) {
+      console.error('Failed to load best times:', err);
+    }
+  }
+
+  async function saveBestTime(gameKey: BestTimesKey, timeMs: number) {
+    try {
+      await invoke('save_best_time', { gameKey, timeMs });
+      bestTimes[gameKey] = timeMs;
+    } catch (err) {
+      console.error('Failed to save best time:', err);
     }
   }
 
@@ -175,14 +234,13 @@
     // Check if this is a new best time
     const currentBest = bestTimes[gameKey];
     if (!currentBest || finalTime < currentBest) {
-      bestTimes[gameKey] = finalTime;
-      localStorage.setItem(`best-${gameKey}-time`, finalTime.toString());
+      saveBestTime(gameKey, finalTime);
     }
   }
 
-  function generateGameKey(): string {
+  function generateGameKey(): BestTimesKey {
     const soundTypeKey = soundTypes.length === 1 ? soundTypes[0] : 'mixed';
-    return `${gameMode}-${soundTypeKey}-${complexity}`;
+    return `${gameMode}-${soundTypeKey}-${complexity}` as BestTimesKey;
   }
 
   function toggleSoundType(type: string) {
@@ -357,7 +415,7 @@
           </div>
           {#if bestTimes[generateGameKey()]}
             <div class="current-best">
-              Current Best: {formatTime(bestTimes[generateGameKey()])}
+              Current Best: {formatTime(bestTimes[generateGameKey()]!)}
             </div>
           {/if}
         </div>
@@ -402,7 +460,7 @@
         </div>
       </div>
       
-      {#if bestTimes[gameMode] === (endTime - startTime)}
+      {#if bestTimes[generateGameKey()] === (endTime - startTime)}
         <div class="new-best">🏆 New Best Time!</div>
       {/if}
       
