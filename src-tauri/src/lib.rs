@@ -4,7 +4,6 @@ use std::path::PathBuf;
 use std::fs;
 use std::collections::HashMap;
 use tauri::{AppHandle, Manager};
-use chrono::{DateTime, Utc, Duration, NaiveDateTime, NaiveDate};
 
 #[derive(Serialize)]
 struct Kanji {

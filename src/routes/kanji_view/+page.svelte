@@ -428,11 +428,12 @@
 
 <!-- Kanji Details Modal -->
 {#if modalOpen && selectedKanji}
-  <div class="modal-overlay" on:click={closeModal} on:keydown={handleKeydown} tabindex="0" role="dialog" aria-modal="true">
+  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+  <div class="modal-overlay" on:click={closeModal} on:keydown={handleKeydown} tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="modal-title">
     <div class="modal-content" on:click|stopPropagation on:keydown|stopPropagation role="document">
       <div class="modal-header">
-        <h2>Kanji Details</h2>
-        <button class="close-button" on:click={closeModal}>×</button>
+        <h2 id="modal-title">Kanji Details</h2>
+        <button class="close-button" on:click={closeModal} aria-label="Close modal">×</button>
       </div>
       
       <div class="modal-body">
