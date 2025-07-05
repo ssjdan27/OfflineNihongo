@@ -647,7 +647,7 @@
               {#if svgLoading}
                 <div class="svg-loading">Loading stroke order...</div>
               {:else if kanaSvg}
-                <div class="svg-wrapper">
+                <div class="kana-svg-wrapper">
                   <!-- AnimCJK SVGs are injected via JavaScript, fallback SVGs use {@html} -->
                   {#if kanaSvg && !kanaSvg.includes('class="acjk"')}
                     {@html kanaSvg}

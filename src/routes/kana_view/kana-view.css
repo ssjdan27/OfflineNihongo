@@ -315,7 +315,7 @@ button:hover {
 }
 
 /* Override AnimCJK styles for better visibility - all paths thick and black */
-.svg-wrapper svg path {
+.kana-svg-wrapper svg path {
   stroke: #000 !important;
   stroke-width: 30 !important;
   fill: none !important;
