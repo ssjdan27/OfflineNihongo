@@ -314,14 +314,74 @@ button:hover {
   stroke-dashoffset: 0 !important;
 }
 
-/* Override AnimCJK styles for better visibility - all paths thick and black */
-.kana-svg-wrapper svg path {
-  stroke: #000 !important;
-  stroke-width: 30 !important;
+.kana-svg-wrapper {
+  width: 100%;
+  min-height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background-color: white;
+}
+
+.kana-svg-wrapper :global(svg) {
+  max-width: 100%;
+  max-height: 260px;
+  width: auto;
+  height: auto;
+  display: block;
+}
+
+.kana-svg-wrapper :global(svg.acjk) {
+  width: 300px !important;
+  height: 300px !important;
+  background-color: white !important;
+  border-radius: 4px;
+  display: block !important;
+  margin: 0 auto !important;
+}
+
+.kana-svg-wrapper :global(svg.acjk path[id]) {
   fill: none !important;
+  stroke: #ddd !important;
+  stroke-width: 22px !important;
+  opacity: 0.4 !important;
   stroke-linecap: round !important;
   stroke-linejoin: round !important;
 }
+
+.kana-svg-wrapper :global(svg.acjk path[clip-path]) {
+  stroke: #000 !important;
+  stroke-width: 24px !important;
+  stroke-linecap: round !important;
+  stroke-linejoin: round !important;
+  fill: none !important;
+  opacity: 1 !important;
+  stroke-dasharray: 3339 !important;
+  stroke-dashoffset: 0 !important;
+}
+
+/* Static background strokes - light gray outline */
+/* .svg-wrapper :global(svg.acjk path[id]) { */
+/*   fill: none !important; */
+/*   stroke: #ddd !important; */
+/*   stroke-width: 28 !important; */
+/*   opacity: 0.4 !important; */
+/*   stroke-linecap: round !important; */
+/*   stroke-linejoin: round !important; */
+/* } */
+
+/* Animated strokes - black, thick, visible */
+/* .svg-wrapper :global(svg.acjk path[clip-path]) { */
+/*   stroke: #000 !important; */
+/*   stroke-width: 30 !important; */
+/*   stroke-linecap: round !important; */
+/*   stroke-linejoin: round !important; */
+/*   fill: none !important; */
+/*   opacity: 1 !important; */
+/*   stroke-dasharray: none !important; */
+/*   stroke-dashoffset: 0 !important; */
+/* } */
 
 .svg-loading, .svg-placeholder {
   color: var(--text-muted, #666);

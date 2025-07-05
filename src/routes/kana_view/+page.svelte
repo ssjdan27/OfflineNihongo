@@ -231,7 +231,7 @@
       console.log('InjectAndInitializeAnimation called, kanaSvg length:', kanaSvg.length);
       
       // Wait for DOM to be ready
-      const svgWrapper = document.querySelector('.svg-wrapper');
+      const svgWrapper = document.querySelector('.kana-svg-wrapper');
       
       if (!svgWrapper) {
         console.warn('SVG wrapper not found');
@@ -341,7 +341,7 @@
 
     // Fallback animation for non-AnimCJK SVGs
     function initializeFallbackAnimation() {
-      const svgContainer = document.querySelector('.svg-wrapper svg');
+      const svgContainer = document.querySelector('.kana-svg-wrapper svg');
       
       console.log('SVG container element:', svgContainer);
       
@@ -376,7 +376,7 @@
 
     // Show all strokes for AnimCJK SVGs
     function showAllAnimCJKStrokes() {
-      const svgContainer = document.querySelector('.svg-wrapper svg');
+      const svgContainer = document.querySelector('.kana-svg-wrapper svg');
       if (!svgContainer) return;
       
       const strokePaths = svgContainer.querySelectorAll('path[clip-path]');
@@ -409,7 +409,7 @@
 
     // Animation control functions (matching kanji modal)
     function startAnimation() {
-      const svgContainer = document.querySelector('.svg-wrapper svg');
+      const svgContainer = document.querySelector('.kana-svg-wrapper svg');
       if (!svgContainer) return;
       
       const strokePaths = svgContainer.querySelectorAll('path[clip-path]');
@@ -438,7 +438,7 @@
     }
 
     function animateNextStroke() {
-      const svgContainer = document.querySelector('.svg-wrapper svg');
+      const svgContainer = document.querySelector('.kana-svg-wrapper svg');
       if (!svgContainer) return;
       
       const strokePaths = svgContainer.querySelectorAll('path[clip-path]');
@@ -475,7 +475,7 @@
     }
 
     function resetAnimation() {
-      const svgContainer = document.querySelector('.svg-wrapper svg');
+      const svgContainer = document.querySelector('.kana-svg-wrapper svg');
       if (!svgContainer) return;
       
       stopAnimation();
@@ -489,7 +489,7 @@
     }
 
     function showAllStrokes() {
-      const svgContainer = document.querySelector('.svg-wrapper svg');
+      const svgContainer = document.querySelector('.kana-svg-wrapper svg');
       if (!svgContainer) return;
       
       console.log('Show all strokes clicked');
