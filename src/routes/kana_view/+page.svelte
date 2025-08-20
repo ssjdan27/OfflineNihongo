@@ -384,10 +384,16 @@
       
       console.log('Showing all AnimCJK strokes');
       
-      // Show all animated strokes
+      // Show all animated strokes by setting dashoffset to 0
       strokePaths.forEach((path, index) => {
         const pathElement = path as HTMLElement;
+        pathElement.style.strokeDashoffset = '0';
+        pathElement.style.stroke = '#000';
+        pathElement.style.strokeWidth = '24px';
+        pathElement.style.fill = 'none';
         pathElement.style.opacity = '1';
+        pathElement.style.strokeLinecap = 'round';
+        pathElement.style.strokeLinejoin = 'round';
         console.log(`Showed animated stroke ${index + 1}`);
       });
       
@@ -419,14 +425,25 @@
         return;
       }
       
-      console.log('Starting AnimCJK animation');
+      console.log('Starting AnimCJK animation with', strokePaths.length, 'strokes');
       
       isAnimating = true;
       currentStrokeIndex = 0;
       
-      // Hide all strokes first
-      strokePaths.forEach(path => {
-        (path as HTMLElement).style.opacity = '0';
+      // First, hide all strokes by setting stroke-dashoffset to a large value
+      strokePaths.forEach((path, index) => {
+        const pathElement = path as HTMLElement;
+        
+        // Set up stroke styling for animation
+        pathElement.style.stroke = '#000';
+        pathElement.style.strokeWidth = '24px';
+        pathElement.style.fill = 'none';
+        pathElement.style.opacity = '1';
+        pathElement.style.strokeLinecap = 'round';
+        pathElement.style.strokeLinejoin = 'round';
+        pathElement.style.strokeDasharray = '3339';
+        pathElement.style.strokeDashoffset = '3339'; // Hide initially
+        pathElement.style.transition = 'none'; // Remove any existing transitions
       });
       
       // Start animation
@@ -451,9 +468,14 @@
         return;
       }
       
-      const stroke = strokePaths[currentStrokeIndex] as HTMLElement;
-      console.log(`Showing stroke ${currentStrokeIndex + 1}:`, stroke);
-      stroke.style.opacity = '1';
+      const pathElement = strokePaths[currentStrokeIndex] as HTMLElement;
+      console.log(`Animating stroke ${currentStrokeIndex + 1}`);
+      
+      // Set transition for smooth animation
+      pathElement.style.transition = `stroke-dashoffset ${animationSpeed / 1000}s ease-out`;
+      
+      // Animate to visible (dashoffset 0)
+      pathElement.style.strokeDashoffset = '0';
       
       currentStrokeIndex++;
       

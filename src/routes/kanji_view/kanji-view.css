@@ -475,7 +475,7 @@
 .svg-wrapper :global(svg.acjk path[id]) {
   fill: none !important;
   stroke: #ddd !important;
-  stroke-width: 22 !important;
+  stroke-width: 22px !important;
   opacity: 0.4 !important;
   stroke-linecap: round !important;
   stroke-linejoin: round !important;
@@ -484,13 +484,13 @@
 /* Animated strokes - black, thick, visible */
 .svg-wrapper :global(svg.acjk path[clip-path]) {
   stroke: #000 !important;
-  stroke-width: 24 !important;
+  stroke-width: 24px !important;
   stroke-linecap: round !important;
   stroke-linejoin: round !important;
   fill: none !important;
   opacity: 1 !important;
-  stroke-dasharray: none !important;
-  stroke-dashoffset: 0 !important;
+  stroke-dasharray: 3339 !important;
+  stroke-dashoffset: 3339 !important;
 }
 
 .svg-loading, .svg-placeholder {

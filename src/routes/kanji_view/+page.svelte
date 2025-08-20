@@ -675,7 +675,7 @@
       
       // Set up stroke styling for animation
       pathElement.style.stroke = '#000';
-      pathElement.style.strokeWidth = '80px';
+      pathElement.style.strokeWidth = '24px';
       pathElement.style.fill = 'none';
       pathElement.style.opacity = '1';
       pathElement.style.strokeLinecap = 'round';
@@ -740,7 +740,7 @@
       
       // Also ensure stroke is visible
       pathElement.style.stroke = '#000';
-      pathElement.style.strokeWidth = '80px';
+      pathElement.style.strokeWidth = '24px';
       pathElement.style.fill = 'none';
       pathElement.style.opacity = '1';
       pathElement.style.strokeLinecap = 'round';
