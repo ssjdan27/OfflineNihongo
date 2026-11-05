@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
-  import { goto } from '$app/navigation';
+  import { goto, replaceState } from '$app/navigation';
   import { invoke } from '@tauri-apps/api/core';
   import { type KanjiLookup, getGradeLabel, getJlptLabel } from '$lib/kanji';
   import { type SrsCard } from '$lib/srs';
@@ -80,6 +80,16 @@
     }
     await loadStudyStats();
     loading = false;
+
+    // "Study now" on the home page links here with ?start=<session type>
+    const start = new URLSearchParams(window.location.search).get('start');
+    if (start === 'due' || start === 'new' || start === 'mixed') {
+      // Drop the parameter so returning to the dashboard doesn't restart
+      replaceState('/flashcards', {});
+      if (studyStats && studyStats.cards_due + studyStats.cards_new > 0) {
+        await startReviewSession(start);
+      }
+    }
   });
 
   async function setTypeAnswers(enabled: boolean) {
