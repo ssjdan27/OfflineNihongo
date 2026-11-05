@@ -2,19 +2,10 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { invoke } from '@tauri-apps/api/core';
+  import { type KanjiLookup, getGradeLabel, getJlptLabel } from '$lib/kanji';
   import './flashcards.css';
 
-  interface KanjiCard {
-    character: string;
-    stroke_count: number;
-    grade: number;
-    jlpt_level: number;
-    frequency: number;
-    onyomi: string;
-    kunyomi: string;
-    meanings: string[];
-    nanori: string[];
-  }
+  type KanjiCard = KanjiLookup;
 
   interface SrsCard {
     id: string;
@@ -65,6 +56,7 @@
   let showAnswer = false;
   let sessionStartTime = 0;
   let sessionEndTime = 0;
+  let sessionComplete = false;
   let notice = '';
   let submitting = false; // blocks double-clicks from reviewing a card twice
   let reviewType = 'meaning'; // 'meaning' or 'reading'
@@ -92,6 +84,7 @@
         currentView = 'study';
         sessionStartTime = Date.now();
         sessionEndTime = 0;
+        sessionComplete = false;
         await nextCard();
       } else {
         // Not fatal: stay on the dashboard and let the user add cards
@@ -111,28 +104,39 @@
     
     const allCards = [...reviewSession.cards_due, ...reviewSession.cards_new];
     if (allCards.length === 0) {
-      // Session complete: clear the current card so the study view shows
-      // the summary screen, and refresh stats for when the user goes back
+      // Session complete: show the summary and refresh the stats for when
+      // the user goes back to the dashboard
       currentCard = null;
       currentKanjiData = null;
+      sessionComplete = true;
       sessionEndTime = Date.now();
       await loadStudyStats();
       return;
     }
 
     // Get next card (prioritize due cards)
-    currentCard = reviewSession.cards_due.length > 0 
-      ? reviewSession.cards_due[0] 
+    currentCard = reviewSession.cards_due.length > 0
+      ? reviewSession.cards_due[0]
       : reviewSession.cards_new[0];
-    
-    // Load kanji data for the card
+
+    // Clear the previous card's data so its answer can't be shown for this one
+    currentKanjiData = null;
+    showAnswer = false;
     try {
-      currentKanjiData = await invoke('get_kanji', { character: currentCard.character });
-      // Randomly choose review type (60% meaning, 40% reading)
-      reviewType = Math.random() < 0.6 ? 'meaning' : 'reading';
-      showAnswer = false;
+      const kanji: KanjiCard = await invoke('get_kanji', { character: currentCard.character });
+      currentKanjiData = kanji;
+      // Randomly choose review type (60% meaning, 40% reading), but only ask
+      // for something the dictionary has an answer for
+      const hasReadings = Boolean(kanji.onyomi || kanji.kunyomi);
+      const hasMeanings = kanji.meanings.length > 0;
+      if (hasReadings && hasMeanings) {
+        reviewType = Math.random() < 0.6 ? 'meaning' : 'reading';
+      } else {
+        reviewType = hasReadings ? 'reading' : 'meaning';
+      }
     } catch (err) {
       console.error('Error loading kanji data:', err);
+      error = `Failed to load kanji data for ${currentCard.character}: ${err}`;
     }
   }
 
@@ -219,18 +223,6 @@
     return date.toLocaleDateString('en-US', { weekday: style });
   }
 
-  function getGradeLabel(grade: number): string {
-    if (grade >= 1 && grade <= 6) return `Grade ${grade}`;
-    if (grade === 8) return 'Jr. High';
-    if (grade === 9) return 'Jinmeiyou';
-    if (grade === 10) return 'Jinmeiyou Variant';
-    return 'Unknown';
-  }
-
-  function getJlptLabel(level: number): string {
-    if (level >= 1 && level <= 5) return `N${level}`;
-    return '';
-  }
 </script>
 
 <div class="nav-bar">
@@ -363,7 +355,7 @@
   {:else if currentView === 'study'}
     <!-- Study View -->
     <div class="study-session">
-      {#if currentCard && currentKanjiData}
+      {#if !sessionComplete && currentCard && currentKanjiData}
         <div class="session-header">
           <div class="session-progress">
             <div class="progress-info">
@@ -455,6 +447,8 @@
             {/if}
           </div>
         </div>
+      {:else if !sessionComplete}
+        <div class="loading">Loading card...</div>
       {:else}
         <div class="session-complete">
           <h2>Session Complete!</h2>

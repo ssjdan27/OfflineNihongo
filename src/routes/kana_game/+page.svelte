@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy, tick } from 'svelte';
   import { goto } from '$app/navigation';
   import { invoke } from '@tauri-apps/api/core';
+  import { isCorrectRomaji } from '$lib/romaji';
   import './kana-game.css';
 
   interface KanaChar {
@@ -12,99 +13,67 @@
     complexity: string;
   }
 
+  type SoundType = 'seion' | 'dakuon' | 'handakuon';
+  const SOUND_TYPE_ORDER: SoundType[] = ['seion', 'dakuon', 'handakuon'];
+
+  interface TroubleKana {
+    kana: KanaChar;
+    misses: number;
+    skipped: boolean;
+  }
+
   let kanaData: KanaChar[] = [];
   let loading = true;
   let error = '';
-  
+
   // Game settings
   let gameMode: 'hiragana' | 'katakana' | 'mixed' = 'hiragana';
-  let soundTypes: string[] = ['seion']; // Can include: seion, dakuon, handakuon
+  let soundTypes: SoundType[] = ['seion'];
   let complexity: 'basic' | 'combination' | 'mixed' = 'basic';
   let gameStarted = false;
   let gameCompleted = false;
-  
+
   // Game state
   let currentKana: KanaChar | null = null;
   let userInput = '';
   let currentIndex = 0;
   let gameKana: KanaChar[] = [];
   let correctCount = 0;
+  let mistakeCount = 0;
+  let skippedCount = 0;
   let totalCount = 0;
-  
+  let troubleKana: TroubleKana[] = [];
+  let feedback: { text: string; kind: 'correct' | 'incorrect' | 'skipped' } | null = null;
+  let inputElement: HTMLInputElement | null = null;
+
   // Timing
-  let startTime: number = 0;
-  let endTime: number = 0;
-  let elapsedTime: number = 0;
-  let timerInterval: ReturnType<typeof setInterval>;
-  
-  // Results
-  type BestTimesKey = 
-    | 'hiragana-seion-basic' | 'hiragana-seion-combination' | 'hiragana-seion-mixed'
-    | 'hiragana-dakuon-basic' | 'hiragana-dakuon-combination' | 'hiragana-dakuon-mixed'
-    | 'hiragana-handakuon-basic' | 'hiragana-handakuon-combination' | 'hiragana-handakuon-mixed'
-    | 'hiragana-mixed-basic' | 'hiragana-mixed-combination' | 'hiragana-mixed-mixed'
-    | 'katakana-seion-basic' | 'katakana-seion-combination' | 'katakana-seion-mixed'
-    | 'katakana-dakuon-basic' | 'katakana-dakuon-combination' | 'katakana-dakuon-mixed'
-    | 'katakana-handakuon-basic' | 'katakana-handakuon-combination' | 'katakana-handakuon-mixed'
-    | 'katakana-mixed-basic' | 'katakana-mixed-combination' | 'katakana-mixed-mixed'
-    | 'mixed-seion-basic' | 'mixed-seion-combination' | 'mixed-seion-mixed'
-    | 'mixed-dakuon-basic' | 'mixed-dakuon-combination' | 'mixed-dakuon-mixed'
-    | 'mixed-handakuon-basic' | 'mixed-handakuon-combination' | 'mixed-handakuon-mixed'
-    | 'mixed-mixed-basic' | 'mixed-mixed-combination' | 'mixed-mixed-mixed';
+  let startTime = 0;
+  let endTime = 0;
+  let elapsedTime = 0;
+  let timerInterval: ReturnType<typeof setInterval> | undefined;
 
-    // pull times from tauri file system
+  // Best times keyed by game settings (see generateGameKey)
+  let bestTimes: Record<string, number> = {};
+  let isNewBest = false;
 
-  let bestTimes: Record<BestTimesKey, number | null> = {
-    'hiragana-seion-basic': null,
-    'hiragana-seion-combination': null,
-    'hiragana-seion-mixed': null,
-    'hiragana-dakuon-basic': null,
-    'hiragana-dakuon-combination': null,
-    'hiragana-dakuon-mixed': null,
-    'hiragana-handakuon-basic': null,
-    'hiragana-handakuon-combination': null,
-    'hiragana-handakuon-mixed': null,
-    'hiragana-mixed-basic': null,
-    'hiragana-mixed-combination': null,
-    'hiragana-mixed-mixed': null,
-    'katakana-seion-basic': null,
-    'katakana-seion-combination': null,
-    'katakana-seion-mixed': null,
-    'katakana-dakuon-basic': null,
-    'katakana-dakuon-combination': null,
-    'katakana-dakuon-mixed': null,
-    'katakana-handakuon-basic': null,
-    'katakana-handakuon-combination': null,
-    'katakana-handakuon-mixed': null,
-    'katakana-mixed-basic': null,
-    'katakana-mixed-combination': null,
-    'katakana-mixed-mixed': null,
-    // Mixed modes
-    'mixed-seion-basic': null,
-    'mixed-seion-combination': null,
-    'mixed-seion-mixed': null,
-    'mixed-dakuon-basic': null,
-    'mixed-dakuon-combination': null,
-    'mixed-dakuon-mixed': null,
-    'mixed-handakuon-basic': null,
-    'mixed-handakuon-combination': null,
-    'mixed-handakuon-mixed': null,
-    'mixed-mixed-basic': null,
-    'mixed-mixed-combination': null,
-    'mixed-mixed-mixed': null,
-  };
+  $: selectedCount = filterKana(kanaData, gameMode, soundTypes, complexity).length;
+  $: gameKey = generateGameKey(gameMode, soundTypes, complexity);
+  $: attempts = correctCount + mistakeCount + skippedCount;
+  $: accuracyText = attempts > 0 ? `${Math.round((correctCount / attempts) * 100)}%` : '—';
 
   onMount(async () => {
     await loadKanaData();
     await loadBestTimes();
   });
 
+  // Don't leave the timer running if the user navigates away mid-game
+  onDestroy(stopTimer);
+
   async function loadKanaData() {
     try {
       loading = true;
       error = '';
       kanaData = await invoke('get_kana_data');
-      console.log('Loaded kana data:', kanaData.length);
     } catch (err) {
       error = `Failed to load kana data: ${err}`;
       console.error('Error loading kana data:', err);
@@ -115,63 +84,36 @@
 
   async function loadBestTimes() {
     try {
-      const times = await invoke('get_best_times') as Record<string, number>;
-      
-      // Convert to our typed format
-      Object.keys(times).forEach(key => {
-        if (key in bestTimes) {
-          bestTimes[key as BestTimesKey] = times[key];
-        }
-      });
+      bestTimes = await invoke('get_best_times');
     } catch (err) {
       console.error('Failed to load best times:', err);
     }
   }
 
-  async function saveBestTime(gameKey: BestTimesKey, timeMs: number) {
-    try {
-      await invoke('save_best_time', { gameKey, timeMs });
-      bestTimes[gameKey] = timeMs;
-    } catch (err) {
-      console.error('Failed to save best time:', err);
-    }
+  function filterKana(
+    data: KanaChar[],
+    mode: typeof gameMode,
+    types: SoundType[],
+    level: typeof complexity
+  ): KanaChar[] {
+    return data.filter(
+      (k) =>
+        (mode === 'mixed' || k.kana_type === mode) &&
+        types.includes(k.sound_type as SoundType) &&
+        (level === 'mixed' || k.complexity === level)
+    );
   }
 
-  function startGame() {
-    // Filter kana based on game mode, sound types, and complexity
-    let filteredKana = [...kanaData];
-    
-    // Filter by kana type (hiragana/katakana/mixed)
-    if (gameMode !== 'mixed') {
-      filteredKana = filteredKana.filter(k => k.kana_type === gameMode);
-    }
-    
-    // Filter by sound types
-    filteredKana = filteredKana.filter(k => soundTypes.includes(k.sound_type));
-    
-    // Filter by complexity
-    if (complexity !== 'mixed') {
-      filteredKana = filteredKana.filter(k => k.complexity === complexity);
-    }
-    
-    // Shuffle the kana
-    gameKana = shuffleArray(filteredKana);
-    
-    // Reset game state
-    currentIndex = 0;
-    correctCount = 0;
-    totalCount = gameKana.length;
-    userInput = '';
-    gameStarted = true;
-    gameCompleted = false;
-    
-    // Start timer
-    startTime = Date.now();
-    elapsedTime = 0;
-    timerInterval = setInterval(updateTimer, 10);
-    
-    // Set first kana
-    currentKana = gameKana[0];
+  // e.g. "hiragana-seion-basic" or "katakana-seion+dakuon-mixed". Every
+  // combination of sound types gets its own key so best times for
+  // different character sets don't overwrite each other.
+  function generateGameKey(
+    mode: typeof gameMode,
+    types: SoundType[],
+    level: typeof complexity
+  ): string {
+    const soundKey = SOUND_TYPE_ORDER.filter((t) => types.includes(t)).join('+');
+    return `${mode}-${soundKey}-${level}`;
   }
 
   function shuffleArray<T>(array: T[]): T[] {
@@ -183,69 +125,135 @@
     return shuffled;
   }
 
-  function updateTimer() {
-    elapsedTime = Date.now() - startTime;
-  }
-
-  function handleInput(event: KeyboardEvent) {
-    if (!gameStarted || gameCompleted) return;
-    
-    if (event.key === 'Enter') {
-      checkAnswer();
+  function stopTimer() {
+    if (timerInterval) {
+      clearInterval(timerInterval);
+      timerInterval = undefined;
     }
   }
 
-  function checkAnswer() {
-    if (!currentKana) return;
-    
-    const isCorrect = userInput.toLowerCase().trim() === currentKana.romaji.toLowerCase();
-    
-    if (isCorrect) {
-      correctCount++;
-      nextKana();
-    } else {
-      // Show feedback for incorrect answer but don't advance
-      userInput = '';
-    }
-  }
+  async function startGame() {
+    const filtered = filterKana(kanaData, gameMode, soundTypes, complexity);
+    if (filtered.length === 0) return;
 
-  function nextKana() {
-    currentIndex++;
+    gameKana = shuffleArray(filtered);
+    currentIndex = 0;
+    correctCount = 0;
+    mistakeCount = 0;
+    skippedCount = 0;
+    totalCount = gameKana.length;
+    troubleKana = [];
+    feedback = null;
+    isNewBest = false;
     userInput = '';
-    
+    gameStarted = true;
+    gameCompleted = false;
+    currentKana = gameKana[0];
+
+    stopTimer();
+    startTime = Date.now();
+    elapsedTime = 0;
+    timerInterval = setInterval(() => {
+      elapsedTime = Date.now() - startTime;
+    }, 50);
+
+    await tick();
+    inputElement?.focus();
+  }
+
+  // Advance as soon as the typed answer is correct. This happens
+  // synchronously, so there is no delayed check that could fire after the
+  // next kana is shown and wipe what the user is typing.
+  function handleInput() {
+    if (!currentKana || gameCompleted) return;
+    if (isCorrectRomaji(userInput, currentKana.character, currentKana.romaji)) {
+      feedback = { text: `${currentKana.character} = ${currentKana.romaji}`, kind: 'correct' };
+      correctCount++;
+      advance();
+    }
+  }
+
+  function handleKeydown(event: KeyboardEvent) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      submitAnswer();
+    }
+  }
+
+  // Enter / Submit with a wrong answer counts as a mistake.
+  function submitAnswer() {
+    if (!currentKana || gameCompleted) return;
+    const answer = userInput.trim();
+    if (answer === '') return;
+
+    if (isCorrectRomaji(answer, currentKana.character, currentKana.romaji)) {
+      handleInput();
+      return;
+    }
+
+    mistakeCount++;
+    noteTrouble(currentKana, false);
+    feedback = { text: `"${answer}" is not ${currentKana.character}`, kind: 'incorrect' };
+    userInput = '';
+    inputElement?.focus();
+  }
+
+  function skipKana() {
+    if (!currentKana || gameCompleted) return;
+    skippedCount++;
+    noteTrouble(currentKana, true);
+    feedback = { text: `${currentKana.character} = ${currentKana.romaji}`, kind: 'skipped' };
+    advance();
+    inputElement?.focus();
+  }
+
+  function noteTrouble(kana: KanaChar, skipped: boolean) {
+    const existing = troubleKana.find((t) => t.kana === kana);
+    if (existing) {
+      if (skipped) existing.skipped = true;
+      else existing.misses++;
+      troubleKana = troubleKana;
+    } else {
+      troubleKana = [...troubleKana, { kana, misses: skipped ? 0 : 1, skipped }];
+    }
+  }
+
+  function advance() {
+    userInput = '';
+    currentIndex++;
     if (currentIndex >= gameKana.length) {
-      // Game completed
       endGame();
     } else {
       currentKana = gameKana[currentIndex];
     }
   }
 
-  function endGame() {
+  async function endGame() {
     gameCompleted = true;
     endTime = Date.now();
-    clearInterval(timerInterval);
-    
+    stopTimer();
+    elapsedTime = endTime - startTime;
+
+    // Skipping is faster than typing, so only clean runs set best times.
+    if (skippedCount > 0) return;
+
     const finalTime = endTime - startTime;
-    
-    // Generate key for best time based on current settings
-    const gameKey = generateGameKey();
-    
-    // Check if this is a new best time
-    const currentBest = bestTimes[gameKey];
-    if (!currentBest || finalTime < currentBest) {
-      saveBestTime(gameKey, finalTime);
+    const key = gameKey;
+    const currentBest = bestTimes[key];
+    if (currentBest === undefined || finalTime < currentBest) {
+      isNewBest = true;
+      bestTimes = { ...bestTimes, [key]: finalTime };
+      try {
+        await invoke('save_best_time', { gameKey: key, timeMs: finalTime });
+      } catch (err) {
+        console.error('Failed to save best time:', err);
+      }
     }
   }
 
-  function generateGameKey(): BestTimesKey {
-    const soundTypeKey = soundTypes.length === 1 ? soundTypes[0] : 'mixed';
-    return `${gameMode}-${soundTypeKey}-${complexity}` as BestTimesKey;
-  }
-
-  function toggleSoundType(type: string) {
+  function toggleSoundType(type: SoundType) {
     if (soundTypes.includes(type)) {
-      soundTypes = soundTypes.filter(t => t !== type);
+      soundTypes = soundTypes.filter((t) => t !== type);
     } else {
       soundTypes = [...soundTypes, type];
     }
@@ -255,32 +263,20 @@
     }
   }
 
-  function getFilteredKanaCount(): number {
-    let filtered = [...kanaData];
-    
-    if (gameMode !== 'mixed') {
-      filtered = filtered.filter(k => k.kana_type === gameMode);
-    }
-    
-    filtered = filtered.filter(k => soundTypes.includes(k.sound_type));
-    
-    if (complexity !== 'mixed') {
-      filtered = filtered.filter(k => k.complexity === complexity);
-    }
-    
-    return filtered.length;
-  }
-
   function resetGame() {
+    stopTimer();
     gameStarted = false;
     gameCompleted = false;
     currentKana = null;
     userInput = '';
     currentIndex = 0;
     correctCount = 0;
+    mistakeCount = 0;
+    skippedCount = 0;
     totalCount = 0;
+    troubleKana = [];
+    feedback = null;
     elapsedTime = 0;
-    clearInterval(timerInterval);
   }
 
   function goToHome() {
@@ -290,21 +286,8 @@
   function formatTime(timeMs: number): string {
     const minutes = Math.floor(timeMs / 60000);
     const seconds = Math.floor((timeMs % 60000) / 1000);
-    const milliseconds = Math.floor((timeMs % 1000) / 10);
-    return `${minutes}:${seconds.toString().padStart(2, '0')}.${milliseconds.toString().padStart(2, '0')}`;
-  }
-
-  function getAccuracy(): number {
-    return totalCount > 0 ? Math.round((correctCount / totalCount) * 100) : 0;
-  }
-
-  // Auto-advance when correct answer is typed
-  $: if (userInput && currentKana && gameStarted && !gameCompleted) {
-    if (userInput.toLowerCase().trim() === currentKana.romaji.toLowerCase()) {
-      setTimeout(() => {
-        checkAnswer();
-      }, 200); // Small delay to show the correct answer
-    }
+    const centiseconds = Math.floor((timeMs % 1000) / 10);
+    return `${minutes}:${seconds.toString().padStart(2, '0')}.${centiseconds.toString().padStart(2, '0')}`;
   }
 </script>
 
@@ -314,7 +297,7 @@
 
 <main class="game-container">
   <h1>Kana Speed Typing Game</h1>
-  
+
   {#if loading}
     <div class="loading">Loading kana data...</div>
   {:else if error}
@@ -324,26 +307,26 @@
     <div class="setup-screen">
       <div class="game-mode-selection">
         <h2>Choose Game Settings</h2>
-        
+
         <!-- Kana Type Selection -->
         <div class="setting-group">
           <h3>Kana Type</h3>
           <div class="mode-buttons">
-            <button 
+            <button
               class="mode-button {gameMode === 'hiragana' ? 'active' : ''}"
-              on:click={() => gameMode = 'hiragana'}
+              on:click={() => (gameMode = 'hiragana')}
             >
               Hiragana Only
             </button>
-            <button 
+            <button
               class="mode-button {gameMode === 'katakana' ? 'active' : ''}"
-              on:click={() => gameMode = 'katakana'}
+              on:click={() => (gameMode = 'katakana')}
             >
               Katakana Only
             </button>
-            <button 
+            <button
               class="mode-button {gameMode === 'mixed' ? 'active' : ''}"
-              on:click={() => gameMode = 'mixed'}
+              on:click={() => (gameMode = 'mixed')}
             >
               Mixed (Both)
             </button>
@@ -354,7 +337,7 @@
         <div class="setting-group">
           <h3>Sound Types</h3>
           <div class="checkbox-buttons">
-            <button 
+            <button
               class="checkbox-button {soundTypes.includes('seion') ? 'active' : ''}"
               on:click={() => toggleSoundType('seion')}
             >
@@ -362,7 +345,7 @@
               Seion (Basic)
               <div class="subtitle">あ か さ た な は ま や ら わ</div>
             </button>
-            <button 
+            <button
               class="checkbox-button {soundTypes.includes('dakuon') ? 'active' : ''}"
               on:click={() => toggleSoundType('dakuon')}
             >
@@ -370,7 +353,7 @@
               Dakuon (Voiced)
               <div class="subtitle">が ざ だ ば</div>
             </button>
-            <button 
+            <button
               class="checkbox-button {soundTypes.includes('handakuon') ? 'active' : ''}"
               on:click={() => toggleSoundType('handakuon')}
             >
@@ -385,23 +368,23 @@
         <div class="setting-group">
           <h3>Complexity Level</h3>
           <div class="mode-buttons">
-            <button 
+            <button
               class="mode-button {complexity === 'basic' ? 'active' : ''}"
-              on:click={() => complexity = 'basic'}
+              on:click={() => (complexity = 'basic')}
             >
               Basic Characters
               <div class="subtitle">Single sounds (あ, か, etc.)</div>
             </button>
-            <button 
+            <button
               class="mode-button {complexity === 'combination' ? 'active' : ''}"
-              on:click={() => complexity = 'combination'}
+              on:click={() => (complexity = 'combination')}
             >
               Combination Characters
               <div class="subtitle">ya/yu/yo combinations (きゃ, しゅ, etc.)</div>
             </button>
-            <button 
+            <button
               class="mode-button {complexity === 'mixed' ? 'active' : ''}"
-              on:click={() => complexity = 'mixed'}
+              on:click={() => (complexity = 'mixed')}
             >
               Mixed (Both)
             </button>
@@ -411,32 +394,30 @@
         <!-- Game Preview -->
         <div class="game-preview">
           <div class="preview-info">
-            <strong>Game Preview:</strong> {getFilteredKanaCount()} characters selected
+            <strong>Game Preview:</strong> {selectedCount} characters selected
           </div>
-          {#if bestTimes[generateGameKey()]}
+          {#if bestTimes[gameKey] !== undefined}
             <div class="current-best">
-              Current Best: {formatTime(bestTimes[generateGameKey()]!)}
+              Current Best: {formatTime(bestTimes[gameKey])}
             </div>
           {/if}
         </div>
       </div>
-      
-      <button 
-        class="start-button" 
-        on:click={startGame}
-        disabled={getFilteredKanaCount() === 0}
-      >
+
+      <button class="start-button" on:click={startGame} disabled={selectedCount === 0}>
         Start Game
       </button>
-      
+
       <div class="instructions">
         <h3>How to Play:</h3>
         <ul>
           <li>Select your preferred kana type, sound types, and complexity level</li>
           <li>Type the romaji (English letters) for each kana character shown</li>
-          <li>The game auto-advances when you type correctly</li>
+          <li>The game advances as soon as you type a correct answer</li>
+          <li>Common alternative spellings are accepted (si/shi, tu/tsu, hu/fu, ...)</li>
+          <li>Press Enter to check a wrong answer, or Skip to reveal it</li>
           <li>Try to complete all characters as fast as possible!</li>
-          <li>Your best times are saved for each combination of settings</li>
+          <li>Best times are saved for each combination of settings (runs with skips don't count)</li>
         </ul>
       </div>
     </div>
@@ -444,7 +425,7 @@
     <!-- Results Screen -->
     <div class="results-screen">
       <h2>Game Complete! 🎉</h2>
-      
+
       <div class="final-stats">
         <div class="stat">
           <div class="stat-label">Time</div>
@@ -452,25 +433,41 @@
         </div>
         <div class="stat">
           <div class="stat-label">Accuracy</div>
-          <div class="stat-value">{getAccuracy()}%</div>
+          <div class="stat-value">{accuracyText}</div>
         </div>
         <div class="stat">
-          <div class="stat-label">Characters</div>
-          <div class="stat-value">{correctCount}/{totalCount}</div>
+          <div class="stat-label">Mistakes</div>
+          <div class="stat-value">{mistakeCount}</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Skipped</div>
+          <div class="stat-value">{skippedCount}/{totalCount}</div>
         </div>
       </div>
-      
-      {#if bestTimes[generateGameKey()] === (endTime - startTime)}
+
+      {#if isNewBest}
         <div class="new-best">🏆 New Best Time!</div>
+      {:else if skippedCount > 0}
+        <div class="best-note">Runs with skipped characters don't count toward best times.</div>
       {/if}
-      
+
+      {#if troubleKana.length > 0}
+        <div class="trouble-section">
+          <h3>Characters to practice</h3>
+          <div class="trouble-list">
+            {#each troubleKana as trouble}
+              <div class="trouble-item" title={trouble.skipped ? 'Skipped' : `${trouble.misses} wrong`}>
+                <span class="trouble-kana">{trouble.kana.character}</span>
+                <span class="trouble-romaji">{trouble.kana.romaji}</span>
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
+
       <div class="result-actions">
-        <button class="play-again-button" on:click={resetGame}>
-          Play Again
-        </button>
-        <button class="home-button" on:click={goToHome}>
-          Back to Home
-        </button>
+        <button class="play-again-button" on:click={startGame}>Play Again</button>
+        <button class="home-button" on:click={resetGame}>Change Settings</button>
       </div>
     </div>
   {:else}
@@ -484,10 +481,10 @@
           {currentIndex + 1} / {totalCount}
         </div>
         <div class="accuracy">
-          Accuracy: {getAccuracy()}%
+          Accuracy: {accuracyText}
         </div>
       </div>
-      
+
       <div class="kana-display">
         <div class="current-kana">
           {currentKana?.character || ''}
@@ -496,25 +493,33 @@
           {currentKana?.kana_type || ''}
         </div>
       </div>
-      
+
       <div class="input-section">
-        <input 
-          type="text" 
+        <input
+          type="text"
+          bind:this={inputElement}
           bind:value={userInput}
-          on:keydown={handleInput}
+          on:input={handleInput}
+          on:keydown={handleKeydown}
           placeholder="Type romaji here..."
           class="romaji-input"
           autocomplete="off"
+          autocapitalize="off"
+          spellcheck="false"
         />
-        <button class="submit-button" on:click={checkAnswer}>
-          Submit
-        </button>
+        <button class="submit-button" on:click={submitAnswer}>Submit</button>
+        <button class="skip-button" on:click={skipKana}>Skip</button>
       </div>
-      
+
+      <div class="feedback {feedback ? feedback.kind : ''}" aria-live="polite">
+        {#if feedback}
+          {#if feedback.kind === 'correct'}✓{:else if feedback.kind === 'incorrect'}✗{:else}→{/if}
+          {feedback.text}
+        {/if}
+      </div>
+
       <div class="game-actions">
-        <button class="quit-button" on:click={resetGame}>
-          Quit Game
-        </button>
+        <button class="quit-button" on:click={resetGame}>Quit Game</button>
       </div>
     </div>
   {/if}

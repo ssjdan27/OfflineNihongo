@@ -1,19 +1,9 @@
 <script lang="ts">
-    import { onMount } from 'svelte';
+    import { onDestroy, tick } from 'svelte';
     import { goto } from '$app/navigation';
     import { invoke } from '@tauri-apps/api/core';
     import './kana-view.css';
 
-    type Kana = {
-      kana: string;
-      romaji: string;
-      script: "Hiragana" | "Katakana";
-      row: string;
-      col: string;
-    };
-
-    let hiraganaList: Kana[] = [];
-    let katakanaList: Kana[] = [];
     let activeTab: "Hiragana" | "Katakana" = "Hiragana";
     let activeSection: "gojuon" | "dakuon" | "yoon" = "gojuon";
 
@@ -22,13 +12,19 @@
     let selectedKana = '';
     let selectedRomaji = '';
     let selectedScript = '';
+    let modalRequest = 0; // increments on every open/close so stale loads are ignored
+
+    // Stroke order diagram: one SVG per character (yōon like きゃ have two)
+    let kanaSvgs: string[] = [];
+    let svgLoading = false;
 
     // Animation state
-    let animationId: number | null = null;
-    let animationSpeed = 1000; // Default speed in milliseconds
+    let animationSpeed = 1000; // milliseconds per stroke
     let isAnimating = false;
     let currentStrokeIndex = 0;
-    let currentStrokes: SVGPathElement[] = [];
+    let totalStrokes = 0;
+    let animationRun = 0; // increments to cancel a running animation
+    let animationTimer: ReturnType<typeof setTimeout> | null = null;
 
     // Define the traditional kana chart structure organized by sections
     const kanaChart = {
@@ -154,9 +150,6 @@
 
     // Get row labels based on section
     const getRowLabel = (rowIndex: number) => {
-      const script = activeTab.toLowerCase() as 'hiragana' | 'katakana';
-      const romaji = kanaChart.romaji[activeSection];
-      
       if (activeSection === 'gojuon') {
         const labels = ['', 'k~', 's~', 't~', 'n~', 'h~', 'm~', 'y~', 'r~', 'w~', ''];
         return labels[rowIndex] || '';
@@ -170,362 +163,175 @@
       return '';
     };
 
-    onMount(async () => {
-      try {
-        // using static data for kana so we don't need to fetch
-      } catch (err) {
-        console.error("Failed to load kana:", err);
-      }
-    });
+    onDestroy(stopAnimation);
 
-    function showDetails(kana: string, romaji: string) {
-      if (kana) {
-        selectedKana = kana;
-        selectedRomaji = romaji;
-        selectedScript = activeTab;
-        showModal = true;
-        loadKanaSvg();
-      }
-    }
+    async function showDetails(kana: string, romaji: string) {
+      if (!kana) return;
+      const request = ++modalRequest;
+      stopAnimation();
+      selectedKana = kana;
+      selectedRomaji = romaji;
+      selectedScript = activeTab;
+      showModal = true;
+      svgLoading = true;
+      kanaSvgs = [];
+      totalStrokes = 0;
+      currentStrokeIndex = 0;
 
-    // SVG loading and injection
-    let kanaSvg = '';
-    let svgLoading = false;
-    
-    async function loadKanaSvg() {
+      // The diagrams are per character, so load one for each kana in a yōon
+      let svgs: string[] = [];
       try {
-        console.log(`Loading SVG for ${selectedKana}`);
-        svgLoading = true;
-        
-        const svgContent = await invoke('get_kana_svg', { 
-          character: selectedKana 
-        }) as string;
-        
-        console.log('SVG content received:', svgContent ? 'Yes' : 'No');
-        if (svgContent) {
-          console.log('SVG content preview:', svgContent.substring(0, 200) + '...');
-        }
-        
-        kanaSvg = svgContent || '';
-        
-        // Wait for DOM to update, then inject and initialize
-        setTimeout(() => {
-          injectAndInitializeAnimation();
-        }, 50);
-        
+        svgs = await Promise.all(
+          Array.from(kana).map((character) =>
+            invoke<string>('get_kana_svg', { character })
+          )
+        );
       } catch (error) {
         console.error('Error loading kana SVG:', error);
-        kanaSvg = '';
-      } finally {
-        svgLoading = false;
+        svgs = [];
       }
-    }
+      if (request !== modalRequest) return;
 
-    // SVG injection and animation initialization (matching kanji modal)
-    function injectAndInitializeAnimation() {
-      if (!kanaSvg) {
-        console.log('No kanaSvg content available');
-        return;
-      }
-      
-      console.log('InjectAndInitializeAnimation called, kanaSvg length:', kanaSvg.length);
-      
-      // Wait for DOM to be ready
-      const svgWrapper = document.querySelector('.kana-svg-wrapper');
-      
-      if (!svgWrapper) {
-        console.warn('SVG wrapper not found');
-        return;
-      }
-      
-      // Check if this is an AnimCJK SVG by looking for the acjk class in the SVG content
-      const isAnimCJK = kanaSvg.includes('class="acjk"');
-      
-      console.log('Is AnimCJK SVG:', isAnimCJK);
-      
-      if (isAnimCJK) {
-        // AnimCJK SVG - use fetch/innerHTML method as recommended
-        console.log('AnimCJK SVG detected - using direct innerHTML injection');
-        
-        // Clear the wrapper and inject the SVG directly
-        svgWrapper.innerHTML = kanaSvg;
-        
-        console.log('SVG injected, wrapper innerHTML length:', svgWrapper.innerHTML.length);
-        
-        // Force style override immediately after injection
-        const injectedSvg = svgWrapper.querySelector('svg');
-        if (injectedSvg) {
-          // Force SVG dimensions and visibility
-          injectedSvg.style.width = '300px';
-          injectedSvg.style.height = '300px';
-          injectedSvg.style.display = 'block';
-          injectedSvg.style.backgroundColor = 'white';
-          
-          console.log('SVG styled immediately after injection');
-        }
-        
-        // Initialize AnimCJK animation
-        const svgContainer = svgWrapper.querySelector('svg');
-        if (svgContainer) {
-          console.log('AnimCJK SVG successfully injected');
-          console.log('SVG element:', svgContainer);
-          console.log('SVG classes:', svgContainer.classList);
-          console.log('SVG computed style width:', window.getComputedStyle(svgContainer).width);
-          console.log('SVG computed style height:', window.getComputedStyle(svgContainer).height);
-          console.log('SVG bounding box:', svgContainer.getBoundingClientRect());
-          
-          // Find stroke paths with clip-path (animated paths)
-          const strokePaths = svgContainer.querySelectorAll('path[clip-path]');
-          const staticPaths = svgContainer.querySelectorAll('path[id]');
-          
-          // Filter out duplicate strokes based on path data
-          const uniqueStrokes = [];
-          const seenPaths = new Set();
-          
-          for (const stroke of strokePaths) {
-            const pathData = stroke.getAttribute('d');
-            if (pathData && !seenPaths.has(pathData)) {
-              seenPaths.add(pathData);
-              uniqueStrokes.push(stroke as SVGPathElement);
-            }
-          }
-          
-          currentStrokes = uniqueStrokes;
-          console.log(`Found ${strokePaths.length} total animated strokes, ${staticPaths.length} static paths, ${currentStrokes.length} unique strokes for AnimCJK kana`);
-          
-          // Debug stroke paths styling
-          strokePaths.forEach((path, index) => {
-            const pathElement = path as HTMLElement;
-            const computedStyle = window.getComputedStyle(pathElement);
-            console.log(`Animated stroke ${index + 1}:`, {
-              stroke: computedStyle.stroke,
-              strokeWidth: computedStyle.strokeWidth,
-              strokeDasharray: computedStyle.strokeDasharray,
-              strokeDashoffset: computedStyle.strokeDashoffset,
-              fill: computedStyle.fill,
-              opacity: computedStyle.opacity
-            });
-          });
-          
-          // Debug static paths styling
-          staticPaths.forEach((path, index) => {
-            const pathElement = path as HTMLElement;
-            const computedStyle = window.getComputedStyle(pathElement);
-            console.log(`Static stroke ${index + 1}:`, {
-              fill: computedStyle.fill,
-              stroke: computedStyle.stroke,
-              strokeWidth: computedStyle.strokeWidth,
-              opacity: computedStyle.opacity
-            });
-          });
-          
-          // Show all strokes immediately when modal opens for now
-          setTimeout(() => {
-            showAllAnimCJKStrokes();
-          }, 100);
-        } else {
-          console.error('Failed to find injected SVG element');
-        }
-      } else {
-        console.log('Non-AnimCJK SVG detected - using fallback method');
-        
-        // Clear the wrapper (let Svelte handle it via {@html})
-        svgWrapper.innerHTML = '';
-        
-        // Initialize fallback animation after DOM updates
-        setTimeout(() => {
-          initializeFallbackAnimation();
-        }, 50);
-      }
-    }
+      kanaSvgs = svgs;
+      svgLoading = false;
+      if (svgs.length === 0) return;
 
-    // Fallback animation for non-AnimCJK SVGs
-    function initializeFallbackAnimation() {
-      const svgContainer = document.querySelector('.kana-svg-wrapper svg');
-      
-      console.log('SVG container element:', svgContainer);
-      
-      if (!svgContainer) {
-        console.warn('SVG container not found for fallback');
-        return;
-      }
-      
-      console.log('Fallback SVG detected - using manual animation');
-      
-      // Find all path elements
-      let strokePaths = svgContainer.querySelectorAll('path');
-      
-      // Filter out duplicate strokes based on path data
-      const uniqueStrokes = [];
-      const seenPaths = new Set();
-      
-      for (const stroke of strokePaths) {
-        const pathData = stroke.getAttribute('d');
-        if (pathData && !seenPaths.has(pathData)) {
-          seenPaths.add(pathData);
-          uniqueStrokes.push(stroke as SVGPathElement);
-        }
-      }
-      
-      currentStrokes = uniqueStrokes;
-      console.log(`Found ${strokePaths.length} total paths, ${currentStrokes.length} unique strokes for fallback kana`);
-      
-      // Reset animation state
-      resetAnimation();
-    }
-
-    // Show all strokes for AnimCJK SVGs
-    function showAllAnimCJKStrokes() {
-      const svgContainer = document.querySelector('.kana-svg-wrapper svg');
-      if (!svgContainer) return;
-      
-      const strokePaths = svgContainer.querySelectorAll('path[clip-path]');
-      const staticPaths = svgContainer.querySelectorAll('path[id]');
-      
-      console.log('Showing all AnimCJK strokes');
-      
-      // Show all animated strokes
-      strokePaths.forEach((path, index) => {
-        const pathElement = path as HTMLElement;
-        pathElement.style.opacity = '1';
-        console.log(`Showed animated stroke ${index + 1}`);
-      });
-      
-      // Show all static strokes
-      staticPaths.forEach((path, index) => {
-        const pathElement = path as HTMLElement;
-        pathElement.style.opacity = '1';
-        console.log(`Showed static stroke ${index + 1}`);
-      });
-    }
-
-    function closeModal() {
-      showModal = false;
-      stopAnimation();
-      selectedKana = '';
-      selectedRomaji = '';
-      selectedScript = '';
-    }
-
-    // Animation control functions (matching kanji modal)
-    function startAnimation() {
-      const svgContainer = document.querySelector('.kana-svg-wrapper svg');
-      if (!svgContainer) return;
-      
-      const strokePaths = svgContainer.querySelectorAll('path[clip-path]');
-      
-      if (strokePaths.length === 0) {
-        console.log('No animated strokes found');
-        return;
-      }
-      
-      console.log('Starting AnimCJK animation');
-      
-      isAnimating = true;
-      currentStrokeIndex = 0;
-      
-      // Hide all strokes first
-      strokePaths.forEach(path => {
-        (path as HTMLElement).style.opacity = '0';
-      });
-      
-      // Start animation
-      animateNextStroke();
-    }
-
-    function playAnimation() {
+      await tick();
+      if (request !== modalRequest) return;
+      const wrapper = document.querySelector('.kana-svg-wrapper');
+      if (!wrapper) return;
+      wrapper.innerHTML = svgs.join('');
+      prepareDiagram(wrapper);
+      // Draw the kana when the modal opens, like the AnimCJK default
       startAnimation();
     }
 
-    function animateNextStroke() {
-      const svgContainer = document.querySelector('.kana-svg-wrapper svg');
-      if (!svgContainer) return;
-      
-      const strokePaths = svgContainer.querySelectorAll('path[clip-path]');
-      
-      console.log(`animateNextStroke called, currentStrokeIndex: ${currentStrokeIndex}, total strokes: ${strokePaths.length}`);
-      
-      if (currentStrokeIndex >= strokePaths.length) {
-        console.log('Animation finished');
-        isAnimating = false;
-        return;
+    function getDiagrams(): SVGSVGElement[] {
+      return Array.from(document.querySelectorAll<SVGSVGElement>('.kana-svg-wrapper svg'));
+    }
+
+    // AnimCJK splits some strokes into several clipped pieces that share the
+    // same stroke number (the --d delay), e.g. あ has 3 strokes but 4 paths.
+    // Group them so each stroke is drawn, and counted, once.
+    function getStrokeGroups(): SVGPathElement[][] {
+      const groups: SVGPathElement[][] = [];
+      for (const svg of getDiagrams()) {
+        let lastKey: string | null = null;
+        for (const path of svg.querySelectorAll<SVGPathElement>('path[clip-path]')) {
+          const key = /--d:\s*([\d.]+)s/.exec(path.getAttribute('style') ?? '')?.[1] ?? null;
+          if (key !== null && key === lastKey) {
+            groups[groups.length - 1].push(path);
+          } else {
+            groups.push([path]);
+          }
+          lastKey = key;
+        }
       }
-      
-      const stroke = strokePaths[currentStrokeIndex] as HTMLElement;
-      console.log(`Showing stroke ${currentStrokeIndex + 1}:`, stroke);
-      stroke.style.opacity = '1';
-      
-      currentStrokeIndex++;
-      
-      if (currentStrokeIndex < strokePaths.length) {
-        console.log(`Setting timeout for next stroke (${animationSpeed}ms)`);
-        animationId = window.setTimeout(animateNextStroke, animationSpeed);
-      } else {
-        console.log('All strokes shown, animation complete');
-        isAnimating = false;
+      return groups;
+    }
+
+    function prepareDiagram(wrapper: Element) {
+      const diagrams = getDiagrams();
+      const size = diagrams.length > 1 ? '130px' : '260px';
+      for (const svg of diagrams) {
+        svg.style.width = size;
+        svg.style.height = size;
+        svg.style.display = 'block';
+        svg.style.backgroundColor = 'white';
+      }
+      wrapper.classList.toggle('multiple', diagrams.length > 1);
+
+      // Take over from the SVG's own autoplay animation so the controls work
+      for (const group of getStrokeGroups()) {
+        for (const path of group) {
+          path.style.animation = 'none';
+          path.style.strokeDasharray = '3337';
+        }
+      }
+      totalStrokes = getStrokeGroups().length;
+    }
+
+    function setStrokeVisible(group: SVGPathElement[], visible: boolean, animate: boolean) {
+      // Draw over most of the step so there's a short pause between strokes
+      const duration = (animationSpeed * 0.8) / 1000;
+      for (const path of group) {
+        path.style.transition = animate ? `stroke-dashoffset ${duration}s linear` : 'none';
+        path.style.strokeDashoffset = visible ? '0' : '3339';
       }
     }
 
+    function startAnimation() {
+      const groups = getStrokeGroups();
+      if (groups.length === 0) return;
+
+      stopAnimation();
+      const run = animationRun;
+      groups.forEach((group) => setStrokeVisible(group, false, false));
+      currentStrokeIndex = 0;
+      isAnimating = true;
+
+      // Each step reads animationSpeed, so the slider changes the pace of a
+      // running animation.
+      const step = () => {
+        if (run !== animationRun) return;
+        if (currentStrokeIndex >= groups.length) {
+          animationTimer = null;
+          isAnimating = false;
+          return;
+        }
+        setStrokeVisible(groups[currentStrokeIndex], true, true);
+        currentStrokeIndex += 1;
+        animationTimer = setTimeout(step, animationSpeed);
+      };
+      animationTimer = setTimeout(step, 100);
+    }
+
     function stopAnimation() {
-      if (animationId) {
-        clearTimeout(animationId);
-        animationId = null;
+      animationRun++;
+      if (animationTimer) {
+        clearTimeout(animationTimer);
+        animationTimer = null;
       }
       isAnimating = false;
     }
 
     function resetAnimation() {
-      const svgContainer = document.querySelector('.kana-svg-wrapper svg');
-      if (!svgContainer) return;
-      
       stopAnimation();
+      getStrokeGroups().forEach((group) => setStrokeVisible(group, false, false));
       currentStrokeIndex = 0;
-      
-      // Hide all animated strokes
-      const strokePaths = svgContainer.querySelectorAll('path[clip-path]');
-      strokePaths.forEach(path => {
-        (path as HTMLElement).style.opacity = '0';
-      });
     }
 
     function showAllStrokes() {
-      const svgContainer = document.querySelector('.kana-svg-wrapper svg');
-      if (!svgContainer) return;
-      
-      console.log('Show all strokes clicked');
-      
-      // Show all animated strokes
-      const strokePaths = svgContainer.querySelectorAll('path[clip-path]');
-      strokePaths.forEach((path, index) => {
-        console.log(`Setting stroke ${index + 1} opacity to 1`);
-        (path as HTMLElement).style.opacity = '1';
-      });
-      
-      // Show all static strokes
-      const staticPaths = svgContainer.querySelectorAll('path[id]');
-      staticPaths.forEach((path, index) => {
-        console.log(`Setting static stroke ${index + 1} opacity to 1`);
-        (path as HTMLElement).style.opacity = '1';
-      });
-      
       stopAnimation();
+      const groups = getStrokeGroups();
+      groups.forEach((group) => setStrokeVisible(group, true, false));
+      currentStrokeIndex = groups.length;
     }
 
-    function toggleShowAllStrokes() {
-      showAllStrokes();
-    }
-
-    function changeAnimationSpeed(speed: number) {
-      animationSpeed = speed;
-      console.log(`Animation speed changed to ${speed}ms`);
+    function closeModal() {
+      modalRequest++;
+      stopAnimation();
+      showModal = false;
+      svgLoading = false;
+      kanaSvgs = [];
+      selectedKana = '';
+      selectedRomaji = '';
+      selectedScript = '';
     }
 
     function handleKeydown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
+      if (event.key === 'Escape' && showModal) {
         closeModal();
       }
     }
-    
+
+    // Close only when the backdrop itself is clicked, not the dialog
+    function handleOverlayClick(event: MouseEvent) {
+      if (event.target === event.currentTarget) {
+        closeModal();
+      }
+    }
+
     function goToHome() {
       goto('/');
     }
@@ -630,52 +436,49 @@
 
   <!-- Modal -->
   {#if showModal}
+    <!-- Escape is handled by the window listener below -->
     <!-- svelte-ignore a11y-click-events-have-key-events -->
     <!-- svelte-ignore a11y-no-static-element-interactions -->
-    <div class="modal-overlay" on:click={closeModal}>
-      <div class="modal-content" on:click|stopPropagation>
+    <div class="modal-overlay" on:click={handleOverlayClick}>
+      <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="kana-modal-title">
         <div class="modal-header">
-          <h2>{selectedKana} ({selectedRomaji})</h2>
+          <h2 id="kana-modal-title">{selectedKana} ({selectedRomaji})</h2>
           <button class="modal-close" on:click={closeModal} aria-label="Close modal">×</button>
         </div>
-        
+
         <div class="modal-body">
           <div class="modal-left">
             <div class="modal-kana-character">{selectedKana}</div>
-            
+
             <div class="modal-svg-container">
               {#if svgLoading}
                 <div class="svg-loading">Loading stroke order...</div>
-              {:else if kanaSvg}
-                <div class="kana-svg-wrapper">
-                  <!-- AnimCJK SVGs are injected via JavaScript, fallback SVGs use {@html} -->
-                  {#if kanaSvg && !kanaSvg.includes('class="acjk"')}
-                    {@html kanaSvg}
-                  {/if}
-                </div>
+              {:else if kanaSvgs.length > 0}
+                <!-- The SVGs are injected by showDetails() -->
+                <div class="kana-svg-wrapper"></div>
                 <!-- Animation Controls -->
                 <div class="animation-controls">
                   <div class="animation-buttons">
-                    <button class="control-btn" on:click={startAnimation} disabled={isAnimating}>
+                    <button class="control-btn" on:click={startAnimation} disabled={isAnimating || totalStrokes === 0}>
                       {isAnimating ? 'Playing...' : 'Play'}
                     </button>
                     <button class="control-btn" on:click={stopAnimation} disabled={!isAnimating}>
                       Stop
                     </button>
-                    <button class="control-btn" on:click={resetAnimation}>
+                    <button class="control-btn" on:click={resetAnimation} disabled={totalStrokes === 0}>
                       Reset
                     </button>
-                    <button class="control-btn" on:click={showAllStrokes}>
+                    <button class="control-btn" on:click={showAllStrokes} disabled={totalStrokes === 0}>
                       Show All
                     </button>
                   </div>
-                  
+
                   <div class="animation-info">
                     <span class="stroke-counter">
-                      Stroke {currentStrokeIndex} of {currentStrokes.length}
+                      Stroke {currentStrokeIndex} of {totalStrokes}
                     </span>
                   </div>
-                  
+
                   <div class="speed-control">
                     <label for="speed-slider">Speed:</label>
                     <input
@@ -685,7 +488,6 @@
                       max="2000"
                       step="100"
                       bind:value={animationSpeed}
-                      on:input={() => changeAnimationSpeed(animationSpeed)}
                     />
                     <span class="speed-display">{(2200 - animationSpeed) / 1000}x</span>
                   </div>
@@ -695,7 +497,7 @@
               {/if}
             </div>
           </div>
-          
+
           <div class="modal-right">
             <div class="modal-info-section">
               <h3>Character Information</h3>

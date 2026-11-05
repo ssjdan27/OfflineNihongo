@@ -114,30 +114,44 @@
   border: 1px solid #ffcdd2;
 }
 
-/* Loading animation styles */
-.filtering-loading {
+/* Error loading a single kanji's details */
+.detail-error {
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 3rem;
-  color: var(--text-color, #000);
-  font-size: 1.1rem;
-}
-
-.spinner {
-  width: 40px;
-  height: 40px;
-  border: 4px solid var(--border-color, #e0e0e0);
-  border-top: 4px solid var(--accent-color, #396cd8);
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
+  gap: 1rem;
   margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
 }
 
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+.dismiss-button {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+/* Paging for the kanji grid */
+.load-more {
+  display: flex;
+  justify-content: center;
+  padding: 1.5rem 0 2rem;
+}
+
+.load-more-button {
+  padding: 0.6rem 1.4rem;
+  font-size: 1rem;
+  background-color: var(--button-bg, #f3f3f3);
+  color: var(--text-color, #000);
+  border: 1px solid var(--button-border, #ccc);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.load-more-button:hover {
+  background-color: var(--button-hover-bg, #e0e0e0);
 }
 
 /* Stats */

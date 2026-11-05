@@ -54,7 +54,7 @@ In accordance with the license terms, we acknowledge that:
 
 ### animCJK Project
 
-This application uses svg animations for Kanji and Kana from animCJK Github Respository (https://github.com/parsimonhi/animCJK).
+This application uses SVG stroke order animations for kanji and kana from the [animCJK GitHub repository](https://github.com/parsimonhi/animCJK) by François Mizessyn, distributed under the [GNU Lesser General Public License v3.0](https://www.gnu.org/licenses/lgpl-3.0.html).
 
 ## License
 

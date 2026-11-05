@@ -1,53 +1,49 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy, tick } from 'svelte';
   import { goto } from '$app/navigation';
   import { invoke } from '@tauri-apps/api/core';
+  import {
+    type Kanji,
+    type KanjiLookup,
+    splitMeanings,
+    getGradeLabel,
+    getJlptLabel,
+    JLPT_LEVEL_HELP
+  } from '$lib/kanji';
   import './kanji-view.css';
 
-  interface Kanji {
-    character: string;
-    stroke_count: number;
-    grade: number;
-    jlpt_level: number;
-    frequency: number;
-    onyomi: string;
-    kunyomi: string;
-    meanings: string;
-    nanori: string;
-  }
-
-  interface KanjiLookup {
-    character: string;
-    stroke_count: number;
-    grade: number;
-    jlpt_level: number;
-    frequency: number;
-    onyomi: string;
-    kunyomi: string;
-    meanings: string[];
-    nanori: string[];
-  }
+  // Cards are rendered in pages as the user scrolls; rendering all 13,000
+  // kanji at once took several seconds.
+  const PAGE_SIZE = 200;
+  const SEARCH_DEBOUNCE_MS = 150;
 
   let kanjiList: Kanji[] = [];
   let filteredKanji: Kanji[] = [];
+  let visibleCount = PAGE_SIZE;
   let loading = true;
-  let filteringLoading = false;
   let error = '';
+  let detailError = '';
   let activeTab = 'all';
   let activeJlptTab = 'all';
   let activeStrokeTab = 'all';
   let searchQuery = '';
+  let appliedQuery = ''; // the query the current results were filtered with
+  let searchTimer: ReturnType<typeof setTimeout> | undefined;
   let selectedKanji: KanjiLookup | null = null;
   let modalOpen = false;
+  let modalRequest = 0; // increments on every open/close so stale loads are ignored
   let kanjiSvg = '';
   let svgLoading = false;
-  
-  // Animation state variables
+
+  // Stroke order animation
   let isAnimating = false;
   let animationSpeed = 1000; // milliseconds per stroke
   let currentStroke = 0;
   let totalStrokes = 0;
-  let animationInterval: ReturnType<typeof setInterval> | null = null;
+  let animationRun = 0; // increments to cancel a running animation
+  let animationTimer: ReturnType<typeof setTimeout> | null = null;
+
+  $: visibleKanji = filteredKanji.slice(0, visibleCount);
 
   const tabs = [
     { id: 'all', label: 'All Kanji' },
@@ -59,10 +55,7 @@
 
   const jlptTabs = [
     { id: 'all', label: 'All JLPT' },
-    { id: '1', label: 'JLPT N1' },
-    { id: '2', label: 'JLPT N2' },
-    { id: '3', label: 'JLPT N3' },
-    { id: '4', label: 'JLPT N4' }
+    ...[4, 3, 2, 1].map((level) => ({ id: String(level), label: getJlptLabel(level) }))
   ];
 
   const strokeTabs = [
@@ -75,6 +68,11 @@
 
   onMount(async () => {
     await loadKanji();
+  });
+
+  onDestroy(() => {
+    clearTimeout(searchTimer);
+    stopAnimation();
   });
 
   async function loadKanji() {
@@ -91,115 +89,74 @@
     }
   }
 
+  function matchesSearch(kanji: Kanji, query: string): boolean {
+    return (
+      kanji.character.includes(query) ||
+      kanji.meanings.toLowerCase().includes(query) ||
+      kanji.onyomi.toLowerCase().includes(query) ||
+      kanji.kunyomi.toLowerCase().includes(query)
+    );
+  }
+
+  const byFrequency = (a: Kanji, b: Kanji) => (a.frequency || 9999) - (b.frequency || 9999);
+
   function filterKanji() {
-    // Show loading animation for larger datasets
-    filteringLoading = true;
-    
-    // Use setTimeout to allow UI to update and show loading animation
-    setTimeout(() => {
-      const startTime = Date.now();
-      
-      let filtered = [...kanjiList];
+    let filtered = kanjiList;
 
-      // Apply search filter first if there's a search query
-      if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase().trim();
-        filtered = filtered.filter(kanji => {
-          // Search in meanings
-          if (kanji.meanings && kanji.meanings.toLowerCase().includes(query)) {
-            return true;
-          }
-          // Also search in character itself
-          if (kanji.character.includes(query)) {
-            return true;
-          }
-          // Search in readings (onyomi and kunyomi)
-          if (kanji.onyomi && kanji.onyomi.toLowerCase().includes(query)) {
-            return true;
-          }
-          if (kanji.kunyomi && kanji.kunyomi.toLowerCase().includes(query)) {
-            return true;
-          }
-          return false;
-        });
+    const query = searchQuery.toLowerCase().trim();
+    appliedQuery = searchQuery.trim();
+    if (query) {
+      filtered = filtered.filter((kanji) => matchesSearch(kanji, query));
+    }
+
+    switch (activeTab) {
+      case 'frequent':
+        // Frequency 0 means the kanji isn't ranked
+        filtered = filtered
+          .filter((k) => k.frequency > 0)
+          .sort((a, b) => a.frequency - b.frequency)
+          .slice(0, 1000);
+        break;
+
+      case 'grade':
+        filtered = filtered.filter((k) => k.grade > 0).sort((a, b) => a.grade - b.grade);
+        break;
+
+      case 'jlpt':
+        if (activeJlptTab === 'all') {
+          filtered = filtered.filter((k) => k.jlpt_level > 0);
+        } else {
+          const level = parseInt(activeJlptTab);
+          filtered = filtered.filter((k) => k.jlpt_level === level);
+        }
+        // Easiest level first, then by frequency
+        filtered = [...filtered].sort(
+          (a, b) => b.jlpt_level - a.jlpt_level || byFrequency(a, b)
+        );
+        break;
+
+      case 'strokes': {
+        const ranges: Record<string, [number, number]> = {
+          '1-5': [1, 5],
+          '6-10': [6, 10],
+          '11-20': [11, 20],
+          '20+': [21, Infinity]
+        };
+        const range = ranges[activeStrokeTab];
+        if (range) {
+          filtered = filtered.filter(
+            (k) => k.stroke_count >= range[0] && k.stroke_count <= range[1]
+          );
+        }
+        filtered = [...filtered].sort(
+          (a, b) => a.stroke_count - b.stroke_count || byFrequency(a, b)
+        );
+        break;
       }
+    }
 
-      switch (activeTab) {
-        case 'all':
-          // Show all kanji, no additional filtering
-          break;
-        
-        case 'frequent':
-          // Top 1000 most frequent (frequency > 0), sorted by frequency ascending - we leave out those with frequency 0 for now since they don't seem to have a categorization
-          filtered = filtered
-            .filter(k => k.frequency > 0)
-            .sort((a, b) => a.frequency - b.frequency)
-            .slice(0, 1000);
-          break;
-        
-        case 'grade':
-          // Sort by grade, excluding grade 0 since those are not categorized
-          filtered = filtered
-            .filter(k => k.grade > 0)
-            .sort((a, b) => a.grade - b.grade);
-          break;
-        
-        case 'jlpt':
-          // Filter by JLPT level - leave out those with jlpt_level 0 since they are not categorized
-          if (activeJlptTab === 'all') {
-            filtered = filtered.filter(k => k.jlpt_level > 0);
-          } else {
-            const level = parseInt(activeJlptTab);
-            filtered = filtered.filter(k => k.jlpt_level === level);
-          }
-          // Sort by JLPT level, then by frequency
-          filtered.sort((a, b) => {
-            if (a.jlpt_level !== b.jlpt_level) {
-              return a.jlpt_level - b.jlpt_level;
-            }
-            return (a.frequency || 9999) - (b.frequency || 9999);
-          });
-          break;
-        
-        case 'strokes':
-          // Filter by stroke count range if specified
-          if (activeStrokeTab !== 'all') {
-            switch (activeStrokeTab) {
-              case '1-5':
-                filtered = filtered.filter(k => k.stroke_count >= 1 && k.stroke_count <= 5);
-                break;
-              case '6-10':
-                filtered = filtered.filter(k => k.stroke_count >= 6 && k.stroke_count <= 10);
-                break;
-              case '11-20':
-                filtered = filtered.filter(k => k.stroke_count >= 11 && k.stroke_count <= 20);
-                break;
-              case '20+':
-                filtered = filtered.filter(k => k.stroke_count > 20);
-                break;
-            }
-          }
-          // Sort by stroke count, then by frequency
-          filtered.sort((a, b) => {
-            if (a.stroke_count !== b.stroke_count) {
-              return a.stroke_count - b.stroke_count;
-            }
-            return (a.frequency || 9999) - (b.frequency || 9999);
-          });
-          break;
-      }
-
-      const processingTime = Date.now() - startTime;
-      const minDisplayTime = 300; // Minimum time to show loading animation
-      
-      // Ensure loading animation shows for at least minDisplayTime
-      const remainingTime = Math.max(0, minDisplayTime - processingTime);
-      
-      setTimeout(() => {
-        filteredKanji = filtered;
-        filteringLoading = false;
-      }, remainingTime);
-    }, 50); // Initial delay to show loading animation
+    filteredKanji = filtered;
+    visibleCount = PAGE_SIZE;
   }
 
   function setActiveTab(tabId: string) {
@@ -224,79 +181,104 @@
   }
 
   function handleSearch() {
-    filterKanji();
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(filterKanji, SEARCH_DEBOUNCE_MS);
   }
 
   function clearSearch() {
+    clearTimeout(searchTimer);
     searchQuery = '';
     filterKanji();
+  }
+
+  function showMore() {
+    visibleCount = Math.min(visibleCount + PAGE_SIZE, filteredKanji.length);
+  }
+
+  // Loads the next page when the sentinel below the grid scrolls into view.
+  function infiniteScroll(node: HTMLElement) {
+    const observer = new IntersectionObserver(
+      async (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        showMore();
+        await tick();
+        // Re-observing reports the current state again, so this keeps
+        // loading while the sentinel is still on screen (e.g. tall windows).
+        observer.unobserve(node);
+        observer.observe(node);
+      },
+      { rootMargin: '800px' }
+    );
+    observer.observe(node);
+    return {
+      destroy() {
+        observer.disconnect();
+      }
+    };
   }
 
   function goToHome() {
     goto('/');
   }
 
+  // First three meanings for the grid cards
   function formatMeanings(meanings: string): string {
-    if (!meanings) return '';
-    return meanings.split(',').slice(0, 3).join(', ');
-  }
-
-  function getGradeLabel(grade: number): string {
-    if (grade >= 1 && grade <= 6) return `Grade ${grade}`;
-    if (grade === 8) return 'Jr. High';
-    if (grade === 9) return 'Jinmeiyou';
-    if (grade === 10) return 'Jinmeiyou Variant';
-    return 'Unknown';
-  }
-
-  function getJlptLabel(level: number): string {
-    if (level >= 1 && level <= 5) return `N${level}`;
-    return '';
+    return splitMeanings(meanings).slice(0, 3).join('; ');
   }
 
   async function openKanjiModal(kanji: Kanji) {
+    const request = ++modalRequest;
+    stopAnimation();
+    detailError = '';
+    modalOpen = true;
+    svgLoading = true;
+    kanjiSvg = '';
+    totalStrokes = 0;
+    currentStroke = 0;
+
     try {
-      modalOpen = true;
-      svgLoading = true;
-      kanjiSvg = '';
-      
-      // Get detailed kanji information
-      selectedKanji = await invoke('get_kanji', { character: kanji.character });
-      
-      // Get kanji SVG
-      try {
-        kanjiSvg = await invoke('get_kanji_svg', { character: kanji.character });
-        
-        console.log('Received SVG from backend:', kanjiSvg ? 'SVG content received' : 'No SVG content');
-        console.log('SVG length:', kanjiSvg ? kanjiSvg.length : 0);
-        console.log('SVG starts with:', kanjiSvg ? kanjiSvg.substring(0, 100) : 'N/A');
-        console.log('SVG contains acjk class:', kanjiSvg ? kanjiSvg.includes('class="acjk"') : false);
-        
-        // Initialize animation after SVG loads
-        if (kanjiSvg) {
-          // Use a small delay to ensure DOM is updated
-          setTimeout(() => {
-            console.log('About to initialize animation...');
-            injectAndInitializeAnimation();
-          }, 100);
-        }
-      } catch (svgError) {
-        console.warn('SVG not found for', kanji.character, svgError);
-        kanjiSvg = '';
-      }
-      
+      const details: KanjiLookup = await invoke('get_kanji', { character: kanji.character });
+      if (request !== modalRequest) return;
+      selectedKanji = details;
+    } catch (err) {
+      if (request !== modalRequest) return;
+      console.error('Error loading kanji details:', err);
+      modalOpen = false;
       svgLoading = false;
-    } catch (error) {
-      console.error('Error loading kanji details:', error);
-      svgLoading = false;
+      detailError = `Could not load details for ${kanji.character}: ${err}`;
+      return;
     }
+
+    let svg = '';
+    try {
+      svg = await invoke('get_kanji_svg', { character: kanji.character });
+    } catch (svgError) {
+      console.warn('No stroke order diagram for', kanji.character, svgError);
+    }
+    if (request !== modalRequest) return;
+
+    kanjiSvg = svg;
+    svgLoading = false;
+    if (!svg) return;
+
+    await tick();
+    if (request !== modalRequest) return;
+    if (isAnimCJKSource(svg)) {
+      // AnimCJK diagrams are injected directly; KanjiVG ones are rendered
+      // by the template with {@html}.
+      const wrapper = document.querySelector('.svg-wrapper');
+      if (wrapper) wrapper.innerHTML = svg;
+    }
+    prepareDiagram();
   }
 
   function closeModal() {
+    modalRequest++;
+    stopAnimation();
     modalOpen = false;
     selectedKanji = null;
     kanjiSvg = '';
-    stopAnimation();
+    svgLoading = false;
   }
 
   function handleKeydown(event: KeyboardEvent) {
@@ -305,484 +287,164 @@
     }
   }
 
-  // SVG injection and animation initialization
-  function injectAndInitializeAnimation() {
-    if (!kanjiSvg) {
-      console.log('No kanjiSvg content available');
-      return;
-    }
-    
-    console.log('InjectAndInitializeAnimation called, kanjiSvg length:', kanjiSvg.length);
-    
-    // Wait for DOM to be ready
-    const svgWrapper = document.querySelector('.svg-wrapper');
-    
-    if (!svgWrapper) {
-      console.warn('SVG wrapper not found');
-      return;
-    }
-    
-    // Check if this is an AnimCJK SVG by looking for the acjk class in the SVG content
-    const isAnimCJK = kanjiSvg.includes('class="acjk"');
-    
-    console.log('Is AnimCJK SVG:', isAnimCJK);
-    
-    if (isAnimCJK) {
-      // AnimCJK SVG - use fetch/innerHTML method as recommended
-      console.log('AnimCJK SVG detected - using direct innerHTML injection');
-      
-      // Clear the wrapper and inject the SVG directly
-      svgWrapper.innerHTML = kanjiSvg;
-      
-      console.log('SVG injected, wrapper innerHTML length:', svgWrapper.innerHTML.length);
-      
-      // Force style override immediately after injection
-      const injectedSvg = svgWrapper.querySelector('svg');
-      if (injectedSvg) {
-        // Force SVG dimensions and visibility
-        injectedSvg.style.width = '300px';
-        injectedSvg.style.height = '300px';
-        injectedSvg.style.display = 'block';
-        injectedSvg.style.backgroundColor = 'white';
-        
-        console.log('SVG styled immediately after injection');
-      }
-      
-      // Initialize AnimCJK animation
-      const svgContainer = svgWrapper.querySelector('svg');
-      if (svgContainer) {
-        console.log('AnimCJK SVG successfully injected');
-        console.log('SVG element:', svgContainer);
-        console.log('SVG classes:', svgContainer.classList);
-        console.log('SVG computed style width:', window.getComputedStyle(svgContainer).width);
-        console.log('SVG computed style height:', window.getComputedStyle(svgContainer).height);
-        console.log('SVG bounding box:', svgContainer.getBoundingClientRect());
-        
-        // Find stroke paths with clip-path (animated paths)
-        const strokePaths = svgContainer.querySelectorAll('path[clip-path]');
-        const staticPaths = svgContainer.querySelectorAll('path[id]');
-        totalStrokes = strokePaths.length;
-        currentStroke = 0;
-        
-        console.log(`Found ${totalStrokes} animated strokes and ${staticPaths.length} static paths for AnimCJK kanji`);
-        
-        // Debug stroke paths styling
-        strokePaths.forEach((path, index) => {
-          const pathElement = path as HTMLElement;
-          const computedStyle = window.getComputedStyle(pathElement);
-          console.log(`Animated stroke ${index + 1}:`, {
-            stroke: computedStyle.stroke,
-            strokeWidth: computedStyle.strokeWidth,
-            strokeDasharray: computedStyle.strokeDasharray,
-            strokeDashoffset: computedStyle.strokeDashoffset,
-            fill: computedStyle.fill,
-            opacity: computedStyle.opacity
-          });
-        });
-        
-        // Debug static paths styling
-        staticPaths.forEach((path, index) => {
-          const pathElement = path as HTMLElement;
-          const computedStyle = window.getComputedStyle(pathElement);
-          console.log(`Static stroke ${index + 1}:`, {
-            fill: computedStyle.fill,
-            stroke: computedStyle.stroke,
-            strokeWidth: computedStyle.strokeWidth,
-            opacity: computedStyle.opacity
-          });
-        });
-        
-        // Show all strokes immediately when modal opens for now
-        // Later we can change this to start with hidden strokes
-        setTimeout(() => {
-          showAllAnimCJKStrokes();
-        }, 100);
-      } else {
-        console.error('Failed to find injected SVG element');
-      }
-    } else {
-      // KanjiVG SVG - use Svelte's reactive binding (kanjiSvg will be used in template)
-      console.log('KanjiVG SVG detected - using Svelte template binding');
-
-      // Svelte has already rendered the SVG via {@html}; don't clear the
-      // wrapper here or the diagram disappears. The wrapper is recreated on
-      // every modal open (it sits inside the svgLoading block), so there is
-      // no stale content to remove.
-
-      // Initialize KanjiVG animation after DOM updates
-      setTimeout(() => {
-        initializeKanjiVGAnimation();
-      }, 50);
+  // Close only when the backdrop itself is clicked, not the dialog
+  function handleOverlayClick(event: MouseEvent) {
+    if (event.target === event.currentTarget) {
+      closeModal();
     }
   }
 
-  // Animation control functions
-  function initializeKanjiVGAnimation() {
-    const svgContainer = document.querySelector('.svg-wrapper svg');
-    
-    console.log('SVG container element:', svgContainer);
-    
-    if (!svgContainer) {
-      console.warn('SVG container not found for KanjiVG');
-      return;
+  function handleCardKeydown(event: KeyboardEvent, kanji: Kanji) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      openKanjiModal(kanji);
     }
-    
-    console.log('KanjiVG SVG detected - using manual animation');
+  }
 
-    // KanjiVG files are authored at 109x109; scale them up to the same size
-    // as the AnimCJK diagrams (the viewBox keeps the drawing proportional).
-    const svgElement = svgContainer as SVGSVGElement;
-    svgElement.style.width = '300px';
-    svgElement.style.height = '300px';
-    svgElement.style.display = 'block';
-    svgElement.style.margin = '0 auto';
+  // ---- Stroke order diagram ----
 
-    // Find stroke paths - KanjiVG format uses path elements with kvg:*-s* IDs
-    let strokePaths = svgContainer.querySelectorAll('path[id*="-s"]');
-    
-    // If no stroke paths found, try alternative patterns
-    if (strokePaths.length === 0) {
-      strokePaths = svgContainer.querySelectorAll('g[id^="kvg:"] path');
+  function isAnimCJKSource(svg: string): boolean {
+    return svg.includes('class="acjk"');
+  }
+
+  function getDiagram(): SVGSVGElement | null {
+    return document.querySelector('.svg-wrapper svg');
+  }
+
+  function isAnimCJK(svg: SVGSVGElement): boolean {
+    return svg.classList.contains('acjk');
+  }
+
+  // Stroke paths in drawing order
+  function getStrokePaths(svg: SVGSVGElement): SVGPathElement[] {
+    if (isAnimCJK(svg)) {
+      return Array.from(svg.querySelectorAll<SVGPathElement>('path[clip-path]'));
     }
-    
-    // If still no strokes found, try to find all path elements
-    if (strokePaths.length === 0) {
-      strokePaths = svgContainer.querySelectorAll('path');
+    // KanjiVG stroke ids look like "kvg:065e5-s1"
+    let paths = svg.querySelectorAll<SVGPathElement>('path[id*="-s"]');
+    if (paths.length === 0) paths = svg.querySelectorAll<SVGPathElement>('g[id^="kvg:"] path');
+    if (paths.length === 0) paths = svg.querySelectorAll<SVGPathElement>('path');
+    return Array.from(paths);
+  }
+
+  // KanjiVG stroke number labels, in stroke order
+  function getStrokeNumbers(svg: SVGSVGElement): SVGTextElement[] {
+    if (isAnimCJK(svg)) return [];
+    return Array.from(svg.querySelectorAll<SVGTextElement>('g[id*="StrokeNumbers"] text'));
+  }
+
+  function setStrokeVisible(
+    svg: SVGSVGElement,
+    path: SVGPathElement,
+    visible: boolean,
+    animate: boolean
+  ) {
+    if (isAnimCJK(svg)) {
+      path.style.transition = animate
+        ? `stroke-dashoffset ${animationSpeed / 1000}s ease-out`
+        : 'none';
+      path.style.strokeDashoffset = visible ? '0' : '3339';
+    } else {
+      path.style.transition = animate ? 'opacity 0.3s ease' : 'none';
+      path.style.opacity = visible ? '1' : '0';
     }
-    
-    totalStrokes = strokePaths.length;
-    currentStroke = 0;
-    
-    console.log(`Found ${totalStrokes} strokes for KanjiVG kanji`);
-    
-    // Reset animation state
-    resetKanjiVGAnimation();
-    
-    // Initialize all strokes as visible by default
+  }
+
+  function prepareDiagram() {
+    const svg = getDiagram();
+    if (!svg) return;
+
+    svg.style.width = '300px';
+    svg.style.height = '300px';
+    svg.style.display = 'block';
+    svg.style.margin = '0 auto';
+
+    if (isAnimCJK(svg)) {
+      svg.style.backgroundColor = 'white';
+      // Light grey outline of the whole character behind the strokes
+      svg.querySelectorAll<SVGPathElement>('path[id]').forEach((path) => {
+        Object.assign(path.style, {
+          stroke: '#ddd',
+          strokeWidth: '22px',
+          fill: 'none',
+          opacity: '0.4',
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round'
+        });
+      });
+      getStrokePaths(svg).forEach((path) => {
+        Object.assign(path.style, {
+          stroke: '#000',
+          strokeWidth: '80px',
+          fill: 'none',
+          opacity: '1',
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+          strokeDasharray: '3339',
+          animation: 'none' // replace the SVG's own autoplay animation
+        });
+      });
+    }
+
+    totalStrokes = getStrokePaths(svg).length;
     showAllStrokes();
   }
 
   function startAnimation() {
-    if (isAnimating || totalStrokes === 0) return;
-    
-    const svgContainer = document.querySelector('.svg-wrapper svg');
-    if (!svgContainer) return;
-    
-    // Check if this is an AnimCJK SVG
-    const isAnimCJK = svgContainer.classList.contains('acjk');
-    
-    if (isAnimCJK) {
-      startAnimCJKAnimation();
-    } else {
-      // KanjiVG animation logic
-      isAnimating = true;
-      currentStroke = 0;
-      
-      // Hide all strokes initially
-      hideAllKanjiVGStrokes();
-      
-      // Start animation interval
-      animationInterval = setInterval(() => {
-        if (currentStroke < totalStrokes) {
-          showKanjiVGStroke(currentStroke);
-          currentStroke++;
-        } else {
-          stopAnimation();
-        }
-      }, animationSpeed);
-    }
+    const svg = getDiagram();
+    if (!svg || totalStrokes === 0) return;
+
+    stopAnimation();
+    const run = animationRun;
+    const strokes = getStrokePaths(svg);
+    const numbers = getStrokeNumbers(svg);
+    strokes.forEach((path) => setStrokeVisible(svg, path, false, false));
+    numbers.forEach((label) => (label.style.opacity = '0'));
+    currentStroke = 0;
+    isAnimating = true;
+
+    // Each step reads animationSpeed, so moving the slider mid-animation
+    // just changes the pace instead of starting another animation.
+    const step = () => {
+      if (run !== animationRun) return;
+      if (currentStroke >= strokes.length) {
+        animationTimer = null;
+        isAnimating = false;
+        return;
+      }
+      setStrokeVisible(svg, strokes[currentStroke], true, true);
+      if (numbers[currentStroke]) numbers[currentStroke].style.opacity = '1';
+      currentStroke += 1;
+      animationTimer = setTimeout(step, animationSpeed);
+    };
+    animationTimer = setTimeout(step, 100);
   }
 
   function stopAnimation() {
-    if (animationInterval) {
-      clearInterval(animationInterval);
-      animationInterval = null;
+    animationRun++;
+    if (animationTimer) {
+      clearTimeout(animationTimer);
+      animationTimer = null;
     }
     isAnimating = false;
   }
 
   function resetAnimation() {
-    const svgContainer = document.querySelector('.svg-wrapper svg');
-    if (!svgContainer) return;
-    
-    // Check if this is an AnimCJK SVG
-    const isAnimCJK = svgContainer.classList.contains('acjk');
-    
-    if (isAnimCJK) {
-      resetAnimCJKAnimation();
-    } else {
-      // KanjiVG reset logic
-      resetKanjiVGAnimation();
-    }
-  }
-
-  function resetKanjiVGAnimation() {
+    const svg = getDiagram();
+    if (!svg) return;
     stopAnimation();
+    getStrokePaths(svg).forEach((path) => setStrokeVisible(svg, path, false, false));
+    getStrokeNumbers(svg).forEach((label) => (label.style.opacity = '0'));
     currentStroke = 0;
-    hideAllKanjiVGStrokes();
-  }
-
-  function hideAllKanjiVGStrokes() {
-    const svgContainer = document.querySelector('.svg-wrapper svg');
-    if (!svgContainer) return;
-    
-    // Find stroke paths - KanjiVG format
-    let strokePaths = svgContainer.querySelectorAll('path[id*="-s"]');
-    
-    if (strokePaths.length === 0) {
-      strokePaths = svgContainer.querySelectorAll('g[id^="kvg:"] path');
-    }
-    
-    if (strokePaths.length === 0) {
-      strokePaths = svgContainer.querySelectorAll('path');
-    }
-    
-    strokePaths.forEach((stroke) => {
-      (stroke as HTMLElement).style.opacity = '0';
-      (stroke as HTMLElement).style.transition = 'opacity 0.3s ease';
-    });
-  }
-
-  function showKanjiVGStroke(strokeIndex: number) {
-    const svgContainer = document.querySelector('.svg-wrapper svg');
-    if (!svgContainer) return;
-    
-    // Find stroke paths - KanjiVG format
-    let strokePaths = svgContainer.querySelectorAll('path[id*="-s"]');
-    
-    if (strokePaths.length === 0) {
-      strokePaths = svgContainer.querySelectorAll('g[id^="kvg:"] path');
-    }
-    
-    if (strokePaths.length === 0) {
-      strokePaths = svgContainer.querySelectorAll('path');
-    }
-    
-    const strokePath = strokePaths[strokeIndex];
-    if (strokePath) {
-      (strokePath as HTMLElement).style.opacity = '1';
-      (strokePath as HTMLElement).style.transition = 'opacity 0.3s ease';
-    }
-  }
-
-  function showAllKanjiVGStrokes() {
-    const svgContainer = document.querySelector('.svg-wrapper svg');
-    if (!svgContainer) return;
-    
-    // Find stroke paths - KanjiVG format
-    let strokePaths = svgContainer.querySelectorAll('path[id*="-s"]');
-    
-    if (strokePaths.length === 0) {
-      strokePaths = svgContainer.querySelectorAll('g[id^="kvg:"] path');
-    }
-    
-    if (strokePaths.length === 0) {
-      strokePaths = svgContainer.querySelectorAll('path');
-    }
-    
-    strokePaths.forEach((stroke) => {
-      (stroke as HTMLElement).style.opacity = '1';
-      (stroke as HTMLElement).style.transition = 'opacity 0.3s ease';
-    });
-    currentStroke = totalStrokes;
   }
 
   function showAllStrokes() {
-    const svgContainer = document.querySelector('.svg-wrapper svg');
-    if (!svgContainer) return;
-    
-    // Check if this is an AnimCJK SVG
-    const isAnimCJK = svgContainer.classList.contains('acjk');
-    
-    if (isAnimCJK) {
-      showAllAnimCJKStrokes();
-    } else {
-      // KanjiVG show all logic
-      showAllKanjiVGStrokes();
-    }
-  }
-
-  function changeAnimationSpeed(newSpeed: number) {
-    animationSpeed = newSpeed;
-    
-    // If currently animating, restart with new speed
-    if (isAnimating) {
-      const svgContainer = document.querySelector('.svg-wrapper svg');
-      if (svgContainer) {
-        const isAnimCJK = svgContainer.classList.contains('acjk');
-        
-        if (isAnimCJK) {
-          // For AnimCJK, we need to restart the animation
-          resetAnimCJKAnimation();
-          setTimeout(() => startAnimCJKAnimation(), 100);
-        } else {
-          // For KanjiVG, restart the interval-based animation
-          stopAnimation();
-          startAnimation();
-        }
-      }
-    }
-  }
-
-  // AnimCJK animation functions
-  function resetAnimCJKAnimation() {
-    const svgContainer = document.querySelector('.svg-wrapper svg');
-    if (!svgContainer) return;
-    
-    console.log('Resetting AnimCJK animation');
-    
-    // Stop any running animation
-    isAnimating = false;
-    currentStroke = 0;
-    
-    // Get all animated paths and hide them
-    const strokePaths = svgContainer.querySelectorAll('path[clip-path]');
-    strokePaths.forEach((path) => {
-      const pathElement = path as HTMLElement;
-      
-      // Set up stroke styling
-      pathElement.style.stroke = '#000';
-      pathElement.style.strokeWidth = '80px';
-      pathElement.style.fill = 'none';
-      pathElement.style.opacity = '1';
-      pathElement.style.strokeLinecap = 'round';
-      pathElement.style.strokeLinejoin = 'round';
-      pathElement.style.strokeDasharray = '3339';
-      pathElement.style.strokeDashoffset = '3339'; // Hide all strokes
-      pathElement.style.transition = 'none';
-    });
-    
-    // Also style static paths
-    const staticPaths = svgContainer.querySelectorAll('path[id]');
-    staticPaths.forEach((path) => {
-      const pathElement = path as HTMLElement;
-      pathElement.style.stroke = '#ddd';
-      pathElement.style.strokeWidth = '22px';
-      pathElement.style.fill = 'none';
-      pathElement.style.opacity = '0.4';
-      pathElement.style.strokeLinecap = 'round';
-      pathElement.style.strokeLinejoin = 'round';
-    });
-    
-    console.log('AnimCJK animation reset complete');
-  }
-
-  function startAnimCJKAnimation() {
-    const svgContainer = document.querySelector('.svg-wrapper svg');
-    if (!svgContainer) return;
-    
-    isAnimating = true;
-    currentStroke = 0;
-    
-    // Get all animated paths
-    const strokePaths = svgContainer.querySelectorAll('path[clip-path]');
-    
-    console.log('Starting AnimCJK animation with', strokePaths.length, 'strokes');
-    
-    // First, hide all strokes by setting stroke-dashoffset to a large value
-    strokePaths.forEach((path, index) => {
-      const pathElement = path as HTMLElement;
-      
-      // Set up stroke styling for animation
-      pathElement.style.stroke = '#000';
-      pathElement.style.strokeWidth = '80px';
-      pathElement.style.fill = 'none';
-      pathElement.style.opacity = '1';
-      pathElement.style.strokeLinecap = 'round';
-      pathElement.style.strokeLinejoin = 'round';
-      pathElement.style.strokeDasharray = '3339';
-      pathElement.style.strokeDashoffset = '3339'; // Hide initially
-      pathElement.style.transition = 'none'; // Remove any existing transitions
-    });
-    
-    // Animate strokes one by one
-    let currentAnimatingStroke = 0;
-    
-    const animateNextStroke = () => {
-      if (currentAnimatingStroke < strokePaths.length && isAnimating) {
-        const pathElement = strokePaths[currentAnimatingStroke] as HTMLElement;
-        
-        console.log(`Animating stroke ${currentAnimatingStroke + 1}`);
-        
-        // Set transition for smooth animation
-        pathElement.style.transition = `stroke-dashoffset ${animationSpeed / 1000}s ease-out`;
-        
-        // Animate to visible (dashoffset 0)
-        pathElement.style.strokeDashoffset = '0';
-        
-        currentStroke = currentAnimatingStroke + 1;
-        currentAnimatingStroke++;
-        
-        // Schedule next stroke
-        setTimeout(animateNextStroke, animationSpeed);
-      } else {
-        // Animation complete
-        isAnimating = false;
-        currentStroke = totalStrokes;
-        console.log('AnimCJK animation complete');
-      }
-    };
-    
-    // Start the animation
-    setTimeout(animateNextStroke, 100);
-  }
-
-  function showAllAnimCJKStrokes() {
-    const svgContainer = document.querySelector('.svg-wrapper svg');
-    if (!svgContainer) return;
-    
-    // For AnimCJK, showing all strokes means making them visible immediately
-    // The AnimCJK animation works by animating stroke-dashoffset from 3339 to 0
-    // To show all strokes, we set stroke-dashoffset to 0 for all paths
-    const strokePaths = svgContainer.querySelectorAll('path[clip-path]');
-    console.log('Found', strokePaths.length, 'animated stroke paths');
-    
-    strokePaths.forEach((path, index) => {
-      const pathElement = path as HTMLElement;
-      
-      // Log current state before modification
-      const currentDashOffset = window.getComputedStyle(pathElement).strokeDashoffset;
-      console.log(`Stroke ${index + 1} current dashoffset:`, currentDashOffset);
-      
-      // Make strokes visible immediately by setting dashoffset to 0
-      pathElement.style.strokeDashoffset = '0';
-      pathElement.style.animation = 'none'; // Disable animation
-      
-      // Also ensure stroke is visible
-      pathElement.style.stroke = '#000';
-      pathElement.style.strokeWidth = '80px';
-      pathElement.style.fill = 'none';
-      pathElement.style.opacity = '1';
-      pathElement.style.strokeLinecap = 'round';
-      pathElement.style.strokeLinejoin = 'round';
-      
-      // Log new state after modification
-      const newDashOffset = window.getComputedStyle(pathElement).strokeDashoffset;
-      console.log(`Stroke ${index + 1} new dashoffset:`, newDashOffset);
-    });
-    
-    // Also handle static paths (background strokes)
-    const staticPaths = svgContainer.querySelectorAll('path[id]');
-    console.log('Found', staticPaths.length, 'static stroke paths');
-    
-    staticPaths.forEach((path, index) => {
-      const pathElement = path as HTMLElement;
-      
-      // Make static strokes visible with light gray
-      pathElement.style.stroke = '#ddd';
-      pathElement.style.strokeWidth = '22px';
-      pathElement.style.fill = 'none';
-      pathElement.style.opacity = '0.4';
-      pathElement.style.strokeLinecap = 'round';
-      pathElement.style.strokeLinejoin = 'round';
-      
-      console.log(`Static stroke ${index + 1} styled`);
-    });
-    
+    const svg = getDiagram();
+    if (!svg) return;
+    stopAnimation();
+    getStrokePaths(svg).forEach((path) => setStrokeVisible(svg, path, true, false));
+    getStrokeNumbers(svg).forEach((label) => (label.style.opacity = '1'));
     currentStroke = totalStrokes;
-    isAnimating = false;
-    
-    console.log('Showed all AnimCJK strokes by setting stroke-dashoffset to 0');
   }
 </script>
 
@@ -792,7 +454,7 @@
 
 <main class="kanji-container">
   <h1>Kanji Database</h1>
-  
+
   <!-- Search bar -->
   <div class="search-container">
     <input
@@ -803,12 +465,12 @@
       class="search-input"
     />
     {#if searchQuery}
-      <button class="clear-search-btn" on:click={clearSearch}>
+      <button class="clear-search-btn" on:click={clearSearch} aria-label="Clear search">
         ✕
       </button>
     {/if}
   </div>
-  
+
   <!-- Main tabs -->
   <div class="tab-container">
     {#each tabs as tab}
@@ -827,6 +489,7 @@
       {#each jlptTabs as tab}
         <button
           class="sub-tab {activeJlptTab === tab.id ? 'active' : ''}"
+          title={tab.id === 'all' ? undefined : JLPT_LEVEL_HELP}
           on:click={() => setActiveJlptTab(tab.id)}
         >
           {tab.label}
@@ -849,21 +512,23 @@
     </div>
   {/if}
 
+  {#if detailError}
+    <div class="error detail-error">
+      {detailError}
+      <button class="dismiss-button" on:click={() => (detailError = '')} aria-label="Dismiss">✕</button>
+    </div>
+  {/if}
+
   <!-- Content -->
   {#if loading}
     <div class="loading">Loading kanji...</div>
   {:else if error}
     <div class="error">{error}</div>
-  {:else if filteringLoading}
-    <div class="filtering-loading">
-      <div class="spinner"></div>
-      <span>Filtering kanji...</span>
-    </div>
   {:else}
     <div class="kanji-stats">
       Showing {filteredKanji.length} kanji
-      {#if searchQuery}
-        for "{searchQuery}"
+      {#if appliedQuery}
+        for "{appliedQuery}"
       {:else if activeTab === 'frequent'}
         (Top 1000 most frequent)
       {:else if activeTab === 'grade'}
@@ -871,27 +536,27 @@
       {:else if activeTab === 'strokes'}
         {#if activeStrokeTab === 'all'}
           (Sorted by stroke count)
-        {:else if activeStrokeTab === '1-5'}
-          (1-5 strokes)
-        {:else if activeStrokeTab === '6-10'}
-          (6-10 strokes)
-        {:else if activeStrokeTab === '11-20'}
-          (11-20 strokes)
-        {:else if activeStrokeTab === '20+'}
-          (20+ strokes)
+        {:else}
+          ({activeStrokeTab} strokes)
         {/if}
       {:else if activeTab === 'jlpt'}
         {#if activeJlptTab === 'all'}
           (All JLPT levels)
         {:else}
-          (JLPT N{activeJlptTab})
+          ({getJlptLabel(parseInt(activeJlptTab))})
         {/if}
       {/if}
     </div>
 
     <div class="kanji-grid">
-      {#each filteredKanji as kanji}
-        <div class="kanji-card" on:click={() => openKanjiModal(kanji)} on:keydown={(e) => e.key === 'Enter' && openKanjiModal(kanji)} tabindex="0" role="button">
+      {#each visibleKanji as kanji (kanji.character)}
+        <div
+          class="kanji-card"
+          on:click={() => openKanjiModal(kanji)}
+          on:keydown={(e) => handleCardKeydown(e, kanji)}
+          tabindex="0"
+          role="button"
+        >
           <div class="kanji-character">{kanji.character}</div>
           <div class="kanji-info">
             <div class="kanji-readings">
@@ -914,7 +579,7 @@
                 <span class="meta-item grade">{getGradeLabel(kanji.grade)}</span>
               {/if}
               {#if kanji.jlpt_level > 0}
-                <span class="meta-item jlpt">{getJlptLabel(kanji.jlpt_level)}</span>
+                <span class="meta-item jlpt" title={JLPT_LEVEL_HELP}>{getJlptLabel(kanji.jlpt_level)}</span>
               {/if}
               {#if kanji.frequency > 0}
                 <span class="meta-item frequency">#{kanji.frequency}</span>
@@ -925,30 +590,42 @@
         </div>
       {/each}
     </div>
+
+    {#if visibleCount < filteredKanji.length}
+      <div class="load-more" use:infiniteScroll>
+        <button class="load-more-button" on:click={showMore}>
+          Show more ({filteredKanji.length - visibleCount} remaining)
+        </button>
+      </div>
+    {/if}
   {/if}
 </main>
 
 <!-- Kanji Details Modal -->
 {#if modalOpen && selectedKanji}
+  <!-- Escape is handled by the window listener below. The dialog content
+       must not stop keydown propagation, or Escape stops working once a
+       control inside the dialog has focus. -->
+  <!-- svelte-ignore a11y-click-events-have-key-events -->
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-  <div class="modal-overlay" on:click={closeModal} on:keydown={handleKeydown} tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-    <div class="modal-content" on:click|stopPropagation on:keydown|stopPropagation role="document">
+  <div class="modal-overlay" on:click={handleOverlayClick} tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-content" role="document">
       <div class="modal-header">
         <h2 id="modal-title">Kanji Details</h2>
         <button class="close-button" on:click={closeModal} aria-label="Close modal">×</button>
       </div>
-      
+
       <div class="modal-body">
         <div class="modal-left">
           <div class="modal-kanji-character">{selectedKanji.character}</div>
-          
+
           <div class="modal-svg-container">
             {#if svgLoading}
               <div class="svg-loading">Loading stroke order...</div>
             {:else if kanjiSvg}
               <div class="svg-wrapper">
                 <!-- AnimCJK SVGs are injected via JavaScript, KanjiVG SVGs use {@html} -->
-                {#if kanjiSvg && !kanjiSvg.includes('class="acjk"')}
+                {#if !isAnimCJKSource(kanjiSvg)}
                   {@html kanjiSvg}
                 {/if}
               </div>
@@ -968,13 +645,13 @@
                     Show All
                   </button>
                 </div>
-                
+
                 <div class="animation-info">
                   <span class="stroke-counter">
                     Stroke {currentStroke} of {totalStrokes}
                   </span>
                 </div>
-                
+
                 <div class="speed-control">
                   <label for="speed-slider">Speed:</label>
                   <input
@@ -984,7 +661,6 @@
                     max="2000"
                     step="100"
                     bind:value={animationSpeed}
-                    on:input={() => changeAnimationSpeed(animationSpeed)}
                   />
                   <span class="speed-display">{(2200 - animationSpeed) / 1000}x</span>
                 </div>
@@ -994,7 +670,7 @@
             {/if}
           </div>
         </div>
-        
+
         <div class="modal-right">
           <div class="modal-info-section">
             <h3>Readings</h3>
@@ -1014,7 +690,7 @@
               </div>
             {/if}
           </div>
-          
+
           <div class="modal-info-section">
             <h3>Meanings</h3>
             {#if selectedKanji.meanings && selectedKanji.meanings.length > 0}
@@ -1027,7 +703,7 @@
               <div class="no-meanings">No meanings available</div>
             {/if}
           </div>
-          
+
           <div class="modal-info-section">
             <h3>Properties</h3>
             <div class="modal-meta">
@@ -1040,7 +716,7 @@
                 </div>
               {/if}
               {#if selectedKanji.jlpt_level > 0}
-                <div class="modal-meta-item">
+                <div class="modal-meta-item" title={JLPT_LEVEL_HELP}>
                   <span class="modal-label">JLPT Level:</span> {getJlptLabel(selectedKanji.jlpt_level)}
                 </div>
               {/if}
