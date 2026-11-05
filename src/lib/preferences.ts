@@ -41,3 +41,18 @@ export function setSessionLimits(limits: SessionLimits) {
   writeValue(DUE_LIMIT_KEY, String(limits.dueLimit));
   writeValue(NEW_LIMIT_KEY, String(limits.newLimit));
 }
+
+const RECALL_REVIEWS_KEY = 'flashcards.recallReviews';
+
+/** Whether flashcard sessions include "which kanji is this?" recall reviews. */
+export function getRecallReviews(): boolean {
+  try {
+    return localStorage.getItem(RECALL_REVIEWS_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+export function setRecallReviews(enabled: boolean) {
+  writeValue(RECALL_REVIEWS_KEY, String(enabled));
+}

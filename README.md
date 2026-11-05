@@ -14,7 +14,7 @@ OfflineNihongo is an offline application for studying Japanese kana and kanji. E
   - Search by English meaning, by reading in kana or romaji (`mizu`, `taberu`), or paste a word (`日本語`) to see its kanji; results are ranked with common kanji first.
   - Browse by frequency, grade, JLPT level or stroke count.
   - Stroke order diagrams with play, stop, reset and show-all controls and adjustable speed.
-- **Kanji flashcards (spaced repetition)** – meaning and reading reviews scheduled with an SM-2 style algorithm.
+- **Kanji flashcards (spaced repetition)** – meaning and reading reviews (plus optional "which kanji is this?" recall reviews) scheduled with an SM-2 style algorithm.
   - Add kanji automatically by grade and frequency, individually from the Kanji Database, or a whole list at once (e.g. all JLPT 4 kanji).
   - Keyboard shortcuts (Space to reveal, 1–4 to grade), optional typed answers for readings, and missed cards come back later in the same session.
   - Dashboard with due/new/learning/mature counts, a seven-day review forecast, weekly history and daily streak.

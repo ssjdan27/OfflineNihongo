@@ -9,6 +9,8 @@
     SESSION_LIMIT_OPTIONS,
     getSessionLimits,
     setSessionLimits,
+    getRecallReviews,
+    setRecallReviews,
     type SessionLimits
   } from '$lib/preferences';
   import './settings.css';
@@ -23,6 +25,7 @@
   let initialized = false;
   let appVersion = '';
   let limits: SessionLimits = getSessionLimits();
+  let recallReviews = getRecallReviews();
 
   // Data management
   let busy = false;
@@ -202,6 +205,22 @@
           <option value={option}>{option}</option>
         {/each}
       </select>
+    </div>
+
+    <div class="setting-item">
+      <div class="setting-info">
+        <h3>Kanji recall reviews</h3>
+        <p>Also ask "which kanji means…?" so you practice recalling the kanji itself</p>
+      </div>
+      <label class="toggle-switch">
+        <input
+          type="checkbox"
+          bind:checked={recallReviews}
+          on:change={() => setRecallReviews(recallReviews)}
+          aria-label="Kanji recall reviews"
+        />
+        <span class="slider"></span>
+      </label>
     </div>
   </div>
 

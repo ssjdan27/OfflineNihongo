@@ -44,3 +44,29 @@ export function formatDue(nextReview: string, now: Date = new Date()): string {
   if (days < 30) return `Due in ${days} days`;
   return `Due ${due.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
 }
+
+export type ReviewType = 'meaning' | 'reading' | 'recall';
+
+/**
+ * Picks what to ask about a card: its meaning, its reading, or (when recall
+ * reviews are on) which kanji matches a meaning. Only asks for things the
+ * dictionary has an answer for. `random` is in [0, 1).
+ */
+export function chooseReviewType(
+  options: { hasMeanings: boolean; hasReadings: boolean; recall: boolean },
+  random: number = Math.random()
+): ReviewType {
+  const weights: [ReviewType, number][] = [];
+  if (options.hasMeanings) weights.push(['meaning', 0.6]);
+  if (options.hasReadings) weights.push(['reading', 0.4]);
+  if (options.recall && options.hasMeanings) weights.push(['recall', 0.35]);
+  if (weights.length === 0) return 'meaning';
+
+  const total = weights.reduce((sum, [, weight]) => sum + weight, 0);
+  let remaining = random * total;
+  for (const [type, weight] of weights) {
+    if (remaining < weight) return type;
+    remaining -= weight;
+  }
+  return weights[weights.length - 1][0];
+}

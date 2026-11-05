@@ -3,9 +3,9 @@
   import { goto, replaceState } from '$app/navigation';
   import { invoke } from '@tauri-apps/api/core';
   import { type KanjiLookup, getGradeLabel, getJlptLabel } from '$lib/kanji';
-  import { type SrsCard } from '$lib/srs';
+  import { type SrsCard, type ReviewType, chooseReviewType } from '$lib/srs';
   import { matchReading } from '$lib/answers';
-  import { getSessionLimits } from '$lib/preferences';
+  import { getSessionLimits, getRecallReviews } from '$lib/preferences';
   import { speakableReadings } from '$lib/speech';
   import SpeakButton from '$lib/components/SpeakButton.svelte';
   import './flashcards.css';
@@ -54,7 +54,7 @@
   let currentCard: SrsCard | null = null;
   let currentKanjiData: KanjiCard | null = null;
   let currentSvg = '';
-  let reviewType: 'meaning' | 'reading' = 'meaning';
+  let reviewType: ReviewType = 'meaning';
   let showAnswer = false;
   let submitting = false; // blocks double-clicks from reviewing a card twice
   let cardRequest = 0; // ignores kanji data that arrives after moving on
@@ -177,15 +177,11 @@
         invoke<string>('get_kanji_svg', { character }).catch(() => '')
       ]);
       if (request !== cardRequest) return;
-      // Randomly choose review type (60% meaning, 40% reading), but only ask
-      // for something the dictionary has an answer for
-      const hasReadings = Boolean(kanji.onyomi || kanji.kunyomi);
-      const hasMeanings = kanji.meanings.length > 0;
-      if (hasReadings && hasMeanings) {
-        reviewType = Math.random() < 0.6 ? 'meaning' : 'reading';
-      } else {
-        reviewType = hasReadings ? 'reading' : 'meaning';
-      }
+      reviewType = chooseReviewType({
+        hasMeanings: kanji.meanings.length > 0,
+        hasReadings: Boolean(kanji.onyomi || kanji.kunyomi),
+        recall: getRecallReviews()
+      });
       currentKanjiData = kanji;
       currentSvg = svg;
       if (typeAnswers && reviewType === 'reading') {
@@ -524,12 +520,33 @@
 
         <div class="study-card">
           <div class="card-front">
-            <div class="kanji-character">{currentCard.character}</div>
-
-            {#if reviewType === 'meaning'}
-              <div class="question">What does this kanji mean?</div>
+            {#if reviewType === 'recall'}
+              <!-- Recall: show the meaning and readings, ask for the kanji -->
+              <div class="question">Which kanji is this?</div>
+              <div class="recall-prompt">
+                <div class="meanings-list">
+                  {#each currentKanjiData.meanings as meaning}
+                    <span class="meaning-tag">{meaning}</span>
+                  {/each}
+                </div>
+                {#if currentKanjiData.onyomi || currentKanjiData.kunyomi}
+                  <div class="recall-readings">
+                    {#if currentKanjiData.onyomi}<span>On: {currentKanjiData.onyomi}</span>{/if}
+                    {#if currentKanjiData.kunyomi}<span>Kun: {currentKanjiData.kunyomi}</span>{/if}
+                  </div>
+                {/if}
+                {#if !showAnswer}
+                  <div class="recall-placeholder" aria-hidden="true">？</div>
+                {/if}
+              </div>
             {:else}
-              <div class="question">How do you read this kanji?</div>
+              <div class="kanji-character">{currentCard.character}</div>
+
+              {#if reviewType === 'meaning'}
+                <div class="question">What does this kanji mean?</div>
+              {:else}
+                <div class="question">How do you read this kanji?</div>
+              {/if}
             {/if}
 
             {#if !showAnswer}
@@ -570,7 +587,9 @@
 
                 <div class="answer-layout">
                   <div class="answer">
-                    {#if reviewType === 'meaning'}
+                    {#if reviewType === 'recall'}
+                      <div class="kanji-character recall-answer">{currentCard.character}</div>
+                    {:else if reviewType === 'meaning'}
                       <h4>Meanings:</h4>
                       <div class="meanings-list">
                         {#each currentKanjiData.meanings as meaning}

@@ -1117,3 +1117,34 @@
   color: var(--text-muted, #666);
   white-space: nowrap;
 }
+
+/* Recall reviews: meaning shown, kanji hidden until revealed */
+.recall-prompt {
+  margin-bottom: 1.5rem;
+}
+
+.recall-readings {
+  display: flex;
+  gap: 1.5rem;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+  color: var(--text-muted, #666);
+}
+
+.recall-placeholder {
+  margin: 1rem auto 0;
+  width: 7rem;
+  height: 7rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  border: 2px dashed var(--border-color, #e0e0e0);
+  font-size: 3rem;
+  color: var(--text-muted, #666);
+}
+
+.kanji-character.recall-answer {
+  margin-bottom: 0;
+}

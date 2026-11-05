@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cardStage, formatDue, type SrsCard } from './srs';
+import { cardStage, chooseReviewType, formatDue, type SrsCard } from './srs';
 
 function card(overrides: Partial<SrsCard>): SrsCard {
   return {
@@ -36,5 +36,30 @@ describe('formatDue', () => {
     expect(formatDue(new Date(2026, 10, 10, 1).toISOString(), now)).toBe('Due in 5 days');
     expect(formatDue(new Date(2027, 2, 3, 12).toISOString(), now)).toBe('Due Mar 3, 2027');
     expect(formatDue('garbage', now)).toBe('Due now');
+  });
+});
+
+describe('chooseReviewType', () => {
+  const both = { hasMeanings: true, hasReadings: true, recall: false };
+
+  it('asks about meanings and readings 60/40', () => {
+    expect(chooseReviewType(both, 0)).toBe('meaning');
+    expect(chooseReviewType(both, 0.59)).toBe('meaning');
+    expect(chooseReviewType(both, 0.61)).toBe('reading');
+    expect(chooseReviewType(both, 0.999)).toBe('reading');
+  });
+
+  it('adds recall reviews when enabled', () => {
+    const withRecall = { ...both, recall: true };
+    const counts = { meaning: 0, reading: 0, recall: 0 };
+    for (let i = 0; i < 1000; i++) counts[chooseReviewType(withRecall, i / 1000)]++;
+    expect(counts.recall).toBeGreaterThan(200);
+    expect(counts.meaning).toBeGreaterThan(counts.reading);
+  });
+
+  it('only asks for what the dictionary has', () => {
+    expect(chooseReviewType({ hasMeanings: false, hasReadings: true, recall: true }, 0)).toBe('reading');
+    expect(chooseReviewType({ hasMeanings: true, hasReadings: false, recall: false }, 0.9)).toBe('meaning');
+    expect(chooseReviewType({ hasMeanings: false, hasReadings: false, recall: true }, 0.5)).toBe('meaning');
   });
 });
