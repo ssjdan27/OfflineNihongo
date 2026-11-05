@@ -205,14 +205,6 @@ async fn add_new_cards(app: AppHandle, count: i32) -> Result<i32, String> {
     Ok(picked.len() as i32)
 }
 
-/// Characters of every kanji in the flashcard deck.
-#[tauri::command]
-async fn get_deck_characters(app: AppHandle) -> Result<Vec<String>, String> {
-    let dir = data_dir(&app)?;
-    let _guard = lock_data();
-    Ok(load_cards(&dir)?.into_iter().map(|c| c.character).collect())
-}
-
 /// Every flashcard in the deck.
 #[tauri::command]
 async fn get_cards(app: AppHandle) -> Result<Vec<SrsCard>, String> {
@@ -407,7 +399,6 @@ pub fn run() {
             start_review_session,
             submit_card_review,
             add_new_cards,
-            get_deck_characters,
             get_cards,
             get_card,
             add_card,
