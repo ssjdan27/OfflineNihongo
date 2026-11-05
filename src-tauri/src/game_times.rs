@@ -16,7 +16,7 @@ impl GameTimes {
         let is_best = self
             .best_times
             .get(game_key)
-            .map_or(true, |best| time_ms < *best);
+            .is_none_or(|best| time_ms < *best);
         if is_best {
             self.best_times.insert(game_key.to_string(), time_ms);
         }

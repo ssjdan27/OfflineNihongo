@@ -306,7 +306,7 @@ pub fn history_from_legacy_weekly_stats(legacy: &HashMap<String, (i32, f32)>) ->
 fn reviewed_on(history: &ReviewHistory, day: NaiveDate) -> bool {
     history
         .get(&day_key(day))
-        .map_or(false, |stats| stats.reviews > 0)
+        .is_some_and(|stats| stats.reviews > 0)
 }
 
 /// Consecutive days with at least one review, ending today. If nothing has
