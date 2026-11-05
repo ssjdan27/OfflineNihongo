@@ -63,6 +63,8 @@
   let currentKanjiData: KanjiCard | null = null;
   let showAnswer = false;
   let sessionStartTime = 0;
+  let sessionEndTime = 0;
+  let notice = '';
   let reviewType = 'meaning'; // 'meaning' or 'reading'
 
   onMount(async () => {
@@ -82,13 +84,17 @@
   async function startReviewSession(sessionType: 'due' | 'new' | 'mixed') {
     try {
       loading = true;
+      notice = '';
       reviewSession = await invoke('start_review_session', { sessionType });
       if (reviewSession && (reviewSession.cards_due.length > 0 || reviewSession.cards_new.length > 0)) {
         currentView = 'study';
         sessionStartTime = Date.now();
+        sessionEndTime = 0;
         await nextCard();
       } else {
-        error = 'No cards available for review';
+        // Not fatal: stay on the dashboard and let the user add cards
+        notice = 'No cards available for review. Add some new cards to get started.';
+        await loadStudyStats();
       }
       loading = false;
     } catch (err) {
@@ -103,8 +109,11 @@
     
     const allCards = [...reviewSession.cards_due, ...reviewSession.cards_new];
     if (allCards.length === 0) {
-      // Session complete
-      currentView = 'dashboard';
+      // Session complete: clear the current card so the study view shows
+      // the summary screen, and refresh stats for when the user goes back
+      currentCard = null;
+      currentKanjiData = null;
+      sessionEndTime = Date.now();
       await loadStudyStats();
       return;
     }
@@ -163,12 +172,23 @@
 
   async function addNewCards(count: number) {
     try {
-      await invoke('add_new_cards', { count });
+      const added: number = await invoke('add_new_cards', { count });
+      notice = added === 0
+        ? 'No more kanji are available to add.'
+        : added < count
+          ? `Added ${added} new cards (no more kanji available).`
+          : `Added ${added} new cards.`;
       await loadStudyStats();
     } catch (err) {
       error = `Failed to add new cards: ${err}`;
       console.error('Error adding new cards:', err);
     }
+  }
+
+  function dismissError() {
+    error = '';
+    currentView = 'dashboard';
+    loadStudyStats();
   }
 
   function goToHome() {
@@ -209,11 +229,20 @@
   {#if loading}
     <div class="loading">Loading...</div>
   {:else if error}
-    <div class="error">{error}</div>
+    <div class="error">
+      {error}
+      <div>
+        <button class="back-button" on:click={dismissError}>Back to Dashboard</button>
+      </div>
+    </div>
   {:else if currentView === 'dashboard'}
     <!-- Dashboard View -->
     <div class="dashboard">
       <h1>Kanji Flashcards</h1>
+
+      {#if notice}
+        <div class="notice">{notice}</div>
+      {/if}
       
       {#if studyStats}
         <!-- Study Stats Overview -->
@@ -429,7 +458,7 @@
             </div>
             <div class="summary-stat">
               <span class="stat-label">Time Spent:</span>
-              <span class="stat-value">{formatTimeSpent(Date.now() - sessionStartTime)}</span>
+              <span class="stat-value">{formatTimeSpent((sessionEndTime || Date.now()) - sessionStartTime)}</span>
             </div>
           </div>
           <button class="continue-button" on:click={() => currentView = 'dashboard'}>

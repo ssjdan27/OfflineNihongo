@@ -604,6 +604,7 @@ async fn get_study_stats(app: AppHandle) -> Result<StudyStats, String> {
     let today = now.date_naive();
     
     let mut cards_due = 0;
+    let mut cards_new = 0;
     let mut cards_learning = 0;
     let mut cards_mature = 0;
     let mut total_reviews = 0;
@@ -631,7 +632,11 @@ async fn get_study_stats(app: AppHandle) -> Result<StudyStats, String> {
             }
         };
         
-        if next_review.date() <= today {
+        // Cards that have never been reviewed are "new"; only previously
+        // reviewed cards count as "due" so the two buckets don't overlap.
+        if card.total_reviews == 0 {
+            cards_new += 1;
+        } else if next_review.date() <= today {
             cards_due += 1;
         }
         
@@ -655,7 +660,7 @@ async fn get_study_stats(app: AppHandle) -> Result<StudyStats, String> {
     Ok(StudyStats {
         total_cards: cards.len() as i32,
         cards_due,
-        cards_new: 20, // Simplified - could be calculated based on available kanji
+        cards_new,
         cards_learning,
         cards_mature,
         daily_streak,
@@ -684,7 +689,15 @@ async fn start_review_session(app: AppHandle, session_type: String) -> Result<Re
     let now = chrono::Utc::now();
     let today = now.date_naive();
     
-    let mut cards_due: Vec<SrsCard> = cards.clone().into_iter()
+    let (new_pool, reviewed): (Vec<SrsCard>, Vec<SrsCard>) = cards
+        .into_iter()
+        .partition(|card| card.total_reviews == 0);
+
+    let mut cards_due: Vec<SrsCard> = match session_type.as_str() {
+        "due" | "mixed" => reviewed,
+        _ => Vec::new(),
+    }
+        .into_iter()
         .filter(|card| {
             // Try to parse the next_review date with better error handling
             let next_review = match chrono::DateTime::parse_from_rfc3339(&card.next_review) {
@@ -707,17 +720,14 @@ async fn start_review_session(app: AppHandle, session_type: String) -> Result<Re
         })
         .collect();
     
-    let cards_new: Vec<SrsCard> = match session_type.as_str() {
-        "new" | "mixed" => {
-            // Generate some new cards (simplified - in real implementation, 
-            // this would pull from the kanji database)
-            vec![]
-        },
-        _ => vec![]
+    let mut cards_new: Vec<SrsCard> = match session_type.as_str() {
+        "new" | "mixed" => new_pool,
+        _ => Vec::new(),
     };
     
     // Limit session size
     cards_due.truncate(20);
+    cards_new.truncate(20);
     
     Ok(ReviewSession {
         cards_due,
@@ -852,9 +862,12 @@ async fn submit_card_review(
 }
 
 #[tauri::command]
-async fn add_new_cards(app: AppHandle, count: i32) -> Result<(), String> {
+async fn add_new_cards(app: AppHandle, count: i32) -> Result<i32, String> {
     let app_dir = app.path().app_local_data_dir()
         .map_err(|e| format!("Failed to get app directory: {}", e))?;
+
+    fs::create_dir_all(&app_dir)
+        .map_err(|e| format!("Failed to create app directory: {}", e))?;
     
     // Get available kanji from database
     let db_path: PathBuf = app
@@ -899,12 +912,14 @@ async fn add_new_cards(app: AppHandle, count: i32) -> Result<(), String> {
                 grade ASC,
                 frequency ASC,
                 stroke_count ASC
-            LIMIT ?1
         ")
         .map_err(|e| format!("Failed to prepare statement: {}", e))?;
     
+    // No LIMIT: rows already in the deck are skipped below, so a fixed limit
+    // would eventually return only existing cards and add nothing. The loop
+    // stops reading rows as soon as `count` cards have been added.
     let kanji_iter = stmt
-        .query_map([count * 3], |row| {
+        .query_map([], |row| {
             Ok((
                 row.get::<_, String>(0)?,  // character
                 row.get::<_, i32>(1)?,     // grade
@@ -952,7 +967,7 @@ async fn add_new_cards(app: AppHandle, count: i32) -> Result<(), String> {
     fs::write(&cards_file, content)
         .map_err(|e| format!("Failed to write cards file: {}", e))?;
     
-    Ok(())
+    Ok(added_count)
 }
 
 fn clean_svg_content(svg_content: &str) -> String {

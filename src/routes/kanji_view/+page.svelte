@@ -403,10 +403,12 @@
     } else {
       // KanjiVG SVG - use Svelte's reactive binding (kanjiSvg will be used in template)
       console.log('KanjiVG SVG detected - using Svelte template binding');
-      
-      // Clear the wrapper (let Svelte handle it via {@html})
-      svgWrapper.innerHTML = '';
-      
+
+      // Svelte has already rendered the SVG via {@html}; don't clear the
+      // wrapper here or the diagram disappears. The wrapper is recreated on
+      // every modal open (it sits inside the svgLoading block), so there is
+      // no stale content to remove.
+
       // Initialize KanjiVG animation after DOM updates
       setTimeout(() => {
         initializeKanjiVGAnimation();
@@ -426,7 +428,15 @@
     }
     
     console.log('KanjiVG SVG detected - using manual animation');
-    
+
+    // KanjiVG files are authored at 109x109; scale them up to the same size
+    // as the AnimCJK diagrams (the viewBox keeps the drawing proportional).
+    const svgElement = svgContainer as SVGSVGElement;
+    svgElement.style.width = '300px';
+    svgElement.style.height = '300px';
+    svgElement.style.display = 'block';
+    svgElement.style.margin = '0 auto';
+
     // Find stroke paths - KanjiVG format uses path elements with kvg:*-s* IDs
     let strokePaths = svgContainer.querySelectorAll('path[id*="-s"]');
     
