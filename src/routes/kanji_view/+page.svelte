@@ -10,6 +10,7 @@
     getJlptLabel,
     JLPT_LEVEL_HELP
   } from '$lib/kanji';
+  import { createKanjiSearch } from '$lib/search';
   import './kanji-view.css';
 
   // Cards are rendered in pages as the user scrolls; rendering all 13,000
@@ -18,6 +19,7 @@
   const SEARCH_DEBOUNCE_MS = 150;
 
   let kanjiList: Kanji[] = [];
+  let search = createKanjiSearch([]);
   let filteredKanji: Kanji[] = [];
   let visibleCount = PAGE_SIZE;
   let loading = true;
@@ -80,6 +82,7 @@
       loading = true;
       error = '';
       kanjiList = await invoke('get_all_kanji');
+      search = createKanjiSearch(kanjiList);
       filterKanji();
     } catch (err) {
       error = `Failed to load kanji: ${err}`;
@@ -89,25 +92,13 @@
     }
   }
 
-  function matchesSearch(kanji: Kanji, query: string): boolean {
-    return (
-      kanji.character.includes(query) ||
-      kanji.meanings.toLowerCase().includes(query) ||
-      kanji.onyomi.toLowerCase().includes(query) ||
-      kanji.kunyomi.toLowerCase().includes(query)
-    );
-  }
-
   const byFrequency = (a: Kanji, b: Kanji) => (a.frequency || 9999) - (b.frequency || 9999);
 
   function filterKanji() {
-    let filtered = kanjiList;
-
-    const query = searchQuery.toLowerCase().trim();
+    // Search results come back best match first; the tabs below re-sort
+    // them by their own criteria.
     appliedQuery = searchQuery.trim();
-    if (query) {
-      filtered = filtered.filter((kanji) => matchesSearch(kanji, query));
-    }
+    let filtered = appliedQuery ? search(appliedQuery) : kanjiList;
 
     switch (activeTab) {
       case 'frequent':
@@ -457,7 +448,7 @@
       type="text"
       bind:value={searchQuery}
       on:input={handleSearch}
-      placeholder="Search by meaning, reading, or character..."
+      placeholder="Search by meaning, reading (kana or romaji), or kanji..."
       class="search-input"
     />
     {#if searchQuery}
