@@ -20,6 +20,7 @@
   // kanji at once took several seconds.
   const PAGE_SIZE = 200;
   const SEARCH_DEBOUNCE_MS = 150;
+  const MAX_BULK_ADD = 500; // matches the backend limit
 
   let kanjiList: Kanji[] = [];
   let search = createKanjiSearch([]);
@@ -41,6 +42,10 @@
   let cardBusy = false;
   let cardError = '';
   let confirmingRemove = false; // removing a reviewed card asks for a second click
+  // Adding the whole current list to the deck
+  let confirmingBulkAdd = false;
+  let bulkBusy = false;
+  let bulkMessage = '';
   let modalOpen = false;
   let modalRequest = 0; // increments on every open/close so stale loads are ignored
   let kanjiSvg = '';
@@ -55,6 +60,10 @@
   let animationTimer: ReturnType<typeof setTimeout> | null = null;
 
   $: visibleKanji = filteredKanji.slice(0, visibleCount);
+  $: notInDeck = filteredKanji.filter((k) => !deck.has(k.character));
+  // Offered for a narrowed list (a tab or a search), not all 13,000 kanji
+  $: canBulkAdd =
+    activeTab !== 'deck' && (activeTab !== 'all' || appliedQuery !== '') && notInDeck.length > 0;
   // Position of the open kanji in the current list, for previous/next
   $: selectedIndex = selectedKanji
     ? filteredKanji.findIndex((k) => k.character === selectedKanji?.character)
@@ -186,6 +195,31 @@
 
     filteredKanji = filtered;
     visibleCount = PAGE_SIZE;
+    confirmingBulkAdd = false;
+  }
+
+  async function addListToDeck() {
+    if (bulkBusy || notInDeck.length === 0 || notInDeck.length > MAX_BULK_ADD) return;
+    if (!confirmingBulkAdd) {
+      confirmingBulkAdd = true;
+      bulkMessage = '';
+      return;
+    }
+    confirmingBulkAdd = false;
+    bulkBusy = true;
+    const characters = notInDeck.map((k) => k.character);
+    try {
+      const added: number = await invoke('add_cards', { characters });
+      bulkMessage =
+        added === characters.length
+          ? `Added ${added} kanji to your flashcards.`
+          : `Added ${added} kanji to your flashcards (${characters.length - added} have no meanings or readings to study).`;
+      await loadDeck();
+    } catch (err) {
+      bulkMessage = `Could not add the kanji: ${err}`;
+    } finally {
+      bulkBusy = false;
+    }
   }
 
   function setActiveTab(tabId: string) {
@@ -647,7 +681,25 @@
       {:else if activeTab === 'deck'}
         (in your flashcards)
       {/if}
+      {#if canBulkAdd}
+        <button
+          class="bulk-add-button {confirmingBulkAdd ? 'confirming' : ''}"
+          on:click={addListToDeck}
+          disabled={bulkBusy || notInDeck.length > MAX_BULK_ADD}
+          title={notInDeck.length > MAX_BULK_ADD
+            ? `Narrow the list to ${MAX_BULK_ADD} kanji or fewer to add them all`
+            : 'Add every kanji in this list that isn\'t in your flashcards yet'}
+        >
+          {confirmingBulkAdd
+            ? `Click again to add ${notInDeck.length} kanji`
+            : `＋ Add ${notInDeck.length === filteredKanji.length ? 'all' : notInDeck.length + ' more'} to flashcards`}
+        </button>
+      {/if}
     </div>
+
+    {#if bulkMessage}
+      <div class="bulk-message" role="status">{bulkMessage}</div>
+    {/if}
 
     {#if activeTab === 'deck' && deck.size === 0}
       <div class="empty-state">

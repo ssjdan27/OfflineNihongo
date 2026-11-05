@@ -229,6 +229,28 @@ async fn add_card(app: AppHandle, character: String) -> Result<SrsCard, String> 
     Ok(card)
 }
 
+/// Most kanji that can be added at once from the Kanji Database.
+const MAX_BULK_ADD: usize = 500;
+
+/// Adds several kanji to the flashcards (skipping ones already in the deck
+/// or with nothing to study) and returns how many were added.
+#[tauri::command]
+async fn add_cards(app: AppHandle, characters: Vec<String>) -> Result<i32, String> {
+    if characters.len() > MAX_BULK_ADD {
+        return Err(format!("Add at most {} kanji at a time", MAX_BULK_ADD));
+    }
+    let studyable = kanji::studyable_characters(&open_kanji_db(&app)?, &characters)?;
+
+    let dir = data_dir(&app)?;
+    let _guard = lock_data();
+    let mut cards = load_cards(&dir)?;
+    let added = srs::add_cards(&mut cards, &studyable, &Local::now());
+    if added > 0 {
+        write_json_atomic(&dir.join(CARDS_FILE), &cards)?;
+    }
+    Ok(added as i32)
+}
+
 /// Removes a kanji from the flashcards; returns whether it was in the deck.
 #[tauri::command]
 async fn remove_card(app: AppHandle, character: String) -> Result<bool, String> {
@@ -371,6 +393,7 @@ pub fn run() {
             get_deck_characters,
             get_card,
             add_card,
+            add_cards,
             remove_card,
             export_backup,
             import_backup,

@@ -166,6 +166,24 @@ pub fn pick_new_card_characters(
     Ok(picked)
 }
 
+/// The characters from `characters` that are in the dictionary and have a
+/// meaning or reading to study, in the given order.
+pub fn studyable_characters(conn: &Connection, characters: &[String]) -> Result<Vec<String>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT 1 FROM kanji WHERE character = ?1
+               AND (COALESCE(meanings, '') <> '' OR COALESCE(onyomi, '') <> '' OR COALESCE(kunyomi, '') <> '')",
+        )
+        .map_err(|e| e.to_string())?;
+    let mut studyable = Vec::new();
+    for character in characters {
+        if stmt.exists([character]).map_err(|e| e.to_string())? {
+            studyable.push(character.clone());
+        }
+    }
+    Ok(studyable)
+}
+
 fn single_char(character: &str) -> Result<char, String> {
     let mut chars = character.chars();
     match (chars.next(), chars.next()) {
@@ -279,6 +297,13 @@ mod tests {
         }
         assert!(deck.contains("一"));
         assert!(pick_new_card_characters(&conn, &deck, 0).unwrap().is_empty());
+    }
+
+    #[test]
+    fn filters_out_unknown_and_empty_kanji() {
+        let conn = db();
+        let input: Vec<String> = ["水", "x", "日", "水曜"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(studyable_characters(&conn, &input).unwrap(), vec!["水", "日"]);
     }
 
     #[test]

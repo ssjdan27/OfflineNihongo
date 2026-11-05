@@ -892,3 +892,37 @@
   color: var(--text-muted, #666);
   font-variant-numeric: tabular-nums;
 }
+
+/* Add the current list to the flashcards */
+.bulk-add-button {
+  margin-left: 0.75rem;
+  padding: 0.3rem 0.8rem;
+  font-size: 0.85rem;
+  border-radius: 999px;
+  border: 1px solid var(--accent-color, #396cd8);
+  background-color: transparent;
+  color: var(--accent-color, #396cd8);
+  cursor: pointer;
+}
+
+.bulk-add-button:hover:not(:disabled) {
+  background-color: var(--accent-color, #396cd8);
+  color: white;
+}
+
+.bulk-add-button.confirming {
+  background-color: var(--accent-color, #396cd8);
+  color: white;
+}
+
+.bulk-add-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.bulk-message {
+  margin: -0.5rem auto 1rem;
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--text-muted, #666);
+}

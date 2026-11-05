@@ -115,6 +115,27 @@ where
     Ok(card)
 }
 
+/// Adds new cards for the characters that aren't in the deck yet and
+/// returns how many were added.
+pub fn add_cards<Tz: TimeZone>(
+    cards: &mut Vec<SrsCard>,
+    characters: &[String],
+    now: &DateTime<Tz>,
+) -> usize
+where
+    Tz::Offset: Display,
+{
+    let mut existing: std::collections::HashSet<String> =
+        cards.iter().map(|card| card.character.clone()).collect();
+    let before = cards.len();
+    for character in characters {
+        if existing.insert(character.clone()) {
+            cards.push(SrsCard::new(character, now));
+        }
+    }
+    cards.len() - before
+}
+
 /// Removes the card for `character`; returns whether there was one.
 pub fn remove_card(cards: &mut Vec<SrsCard>, character: &str) -> bool {
     let before = cards.len();
@@ -629,6 +650,17 @@ mod tests {
         assert!(remove_card(&mut cards, "水"));
         assert!(!remove_card(&mut cards, "水"));
         assert!(cards.is_empty());
+    }
+
+    #[test]
+    fn bulk_add_skips_cards_already_in_the_deck() {
+        let tz = FixedOffset::east_opt(0).unwrap();
+        let now = at(&tz, 2026, 1, 1, 12);
+        let mut cards = vec![SrsCard::new("水", &now)];
+        let input: Vec<String> = ["火", "水", "木", "火"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(add_cards(&mut cards, &input, &now), 2);
+        let characters: Vec<_> = cards.iter().map(|c| c.character.as_str()).collect();
+        assert_eq!(characters, vec!["水", "火", "木"]);
     }
 
     #[test]
