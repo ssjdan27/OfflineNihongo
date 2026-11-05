@@ -213,6 +213,14 @@ async fn get_deck_characters(app: AppHandle) -> Result<Vec<String>, String> {
     Ok(load_cards(&dir)?.into_iter().map(|c| c.character).collect())
 }
 
+/// Every flashcard in the deck.
+#[tauri::command]
+async fn get_cards(app: AppHandle) -> Result<Vec<SrsCard>, String> {
+    let dir = data_dir(&app)?;
+    let _guard = lock_data();
+    load_cards(&dir)
+}
+
 /// The flashcard for `character`, if it is in the deck.
 #[tauri::command]
 async fn get_card(app: AppHandle, character: String) -> Result<Option<SrsCard>, String> {
@@ -400,6 +408,7 @@ pub fn run() {
             submit_card_review,
             add_new_cards,
             get_deck_characters,
+            get_cards,
             get_card,
             add_card,
             add_cards,

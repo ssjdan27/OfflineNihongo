@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { cardStage, chooseReviewType, formatDue, type SrsCard } from './srs';
+import {
+  cardStage,
+  chooseReviewType,
+  compareCards,
+  formatDue,
+  isTroubleCard,
+  type DeckSort,
+  type SrsCard
+} from './srs';
 
 function card(overrides: Partial<SrsCard>): SrsCard {
   return {
@@ -61,5 +69,32 @@ describe('chooseReviewType', () => {
     expect(chooseReviewType({ hasMeanings: false, hasReadings: true, recall: true }, 0)).toBe('reading');
     expect(chooseReviewType({ hasMeanings: true, hasReadings: false, recall: false }, 0.9)).toBe('meaning');
     expect(chooseReviewType({ hasMeanings: false, hasReadings: false, recall: true }, 0.5)).toBe('meaning');
+  });
+});
+
+describe('deck sorting', () => {
+  const fresh = card({ id: 'new', created_at: '2026-11-04T10:00:00Z' });
+  const soon = card({ id: 'soon', total_reviews: 2, correct_reviews: 2, next_review: '2026-11-06T00:00:00Z', created_at: '2026-10-01T00:00:00Z' });
+  const later = card({ id: 'later', total_reviews: 9, correct_reviews: 3, next_review: '2026-12-01T00:00:00Z', created_at: '2026-11-01T00:00:00Z' });
+  const ids = (sort: DeckSort) => [fresh, soon, later].sort((a, b) => compareCards(sort, a, b)).map((c) => c.id);
+
+  it('sorts by due date with new cards last', () => {
+    expect(ids('due')).toEqual(['soon', 'later', 'new']);
+  });
+
+  it('sorts by misses and by date added', () => {
+    expect(ids('missed')).toEqual(['later', 'soon', 'new']);
+    expect(ids('recent')).toEqual(['new', 'later', 'soon']);
+  });
+
+  it('puts kanji without a card last', () => {
+    expect(compareCards('due', undefined, soon)).toBeGreaterThan(0);
+    expect(compareCards('due', soon, undefined)).toBeLessThan(0);
+  });
+
+  it('flags cards that keep being forgotten', () => {
+    expect(isTroubleCard(later)).toBe(true);
+    expect(isTroubleCard(soon)).toBe(false);
+    expect(isTroubleCard(fresh)).toBe(false);
   });
 });

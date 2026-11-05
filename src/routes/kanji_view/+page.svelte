@@ -11,7 +11,15 @@
     JLPT_LEVEL_HELP
   } from '$lib/kanji';
   import { createKanjiSearch, compareByCommonness } from '$lib/search';
-  import { type SrsCard, cardStage, STAGE_LABELS, formatDue } from '$lib/srs';
+  import {
+    type SrsCard,
+    type DeckSort,
+    cardStage,
+    compareCards,
+    isTroubleCard,
+    STAGE_LABELS,
+    formatDue
+  } from '$lib/srs';
   import { speakableReadings } from '$lib/speech';
   import SpeakButton from '$lib/components/SpeakButton.svelte';
   import WritingPad from '$lib/components/WritingPad.svelte';
@@ -38,7 +46,30 @@
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
   let selectedKanji: KanjiLookup | null = null;
   // Flashcard deck
+  let deckCards = new Map<string, SrsCard>();
   let deck = new Set<string>();
+  let deckSort: DeckSort | 'common' = 'due';
+  const deckSortTabs: { id: DeckSort | 'common'; label: string }[] = [
+    { id: 'due', label: 'Due soonest' },
+    { id: 'missed', label: 'Most missed' },
+    { id: 'recent', label: 'Recently added' },
+    { id: 'common', label: 'Most common' }
+  ];
+  $: deckSummary = summarizeDeck(deckCards);
+
+  function summarizeDeck(cards: Map<string, SrsCard>) {
+    const summary = { new: 0, learning: 0, mature: 0, trouble: 0 };
+    for (const card of cards.values()) {
+      summary[cardStage(card)]++;
+      if (isTroubleCard(card)) summary.trouble++;
+    }
+    return summary;
+  }
+
+  function setDeckCards(cards: SrsCard[]) {
+    deckCards = new Map(cards.map((card) => [card.character, card]));
+    deck = new Set(deckCards.keys());
+  }
   let selectedCard: SrsCard | null = null;
   let cardBusy = false;
   let cardError = '';
@@ -118,8 +149,7 @@
 
   async function loadDeck() {
     try {
-      const characters: string[] = await invoke('get_deck_characters');
-      deck = new Set(characters);
+      setDeckCards(await invoke<SrsCard[]>('get_cards'));
       if (activeTab === 'deck') filterKanji();
     } catch (err) {
       console.error('Failed to load flashcard deck:', err);
@@ -184,6 +214,12 @@
 
       case 'deck':
         filtered = filtered.filter((k) => deck.has(k.character));
+        if (deckSort !== 'common') {
+          const sort = deckSort;
+          filtered = [...filtered].sort((a, b) =>
+            compareCards(sort, deckCards.get(a.character), deckCards.get(b.character))
+          );
+        }
         break;
 
       case 'strokes': {
@@ -366,7 +402,7 @@
     try {
       const card: SrsCard = await invoke('add_card', { character });
       if (selectedKanji?.character === character) selectedCard = card;
-      deck = new Set(deck).add(character);
+      setDeckCards([...deckCards.values(), card]);
       if (activeTab === 'deck') filterKanji();
     } catch (err) {
       cardError = `${err}`;
@@ -391,9 +427,7 @@
     try {
       await invoke('remove_card', { character });
       if (selectedKanji?.character === character) selectedCard = null;
-      const next = new Set(deck);
-      next.delete(character);
-      deck = next;
+      setDeckCards([...deckCards.values()].filter((c) => c.character !== character));
       if (activeTab === 'deck') filterKanji();
     } catch (err) {
       cardError = `${err}`;
@@ -644,6 +678,23 @@
     </div>
   {/if}
 
+  <!-- Flashcard deck sorting -->
+  {#if activeTab === 'deck'}
+    <div class="sub-tab-container">
+      {#each deckSortTabs as tab}
+        <button
+          class="sub-tab {deckSort === tab.id ? 'active' : ''}"
+          on:click={() => {
+            deckSort = tab.id;
+            filterKanji();
+          }}
+        >
+          {tab.label}
+        </button>
+      {/each}
+    </div>
+  {/if}
+
   <!-- Stroke count sub-tabs -->
   {#if activeTab === 'strokes'}
     <div class="sub-tab-container">
@@ -694,7 +745,10 @@
           ({getJlptLabel(parseInt(activeJlptTab))})
         {/if}
       {:else if activeTab === 'deck'}
-        (in your flashcards)
+        in your flashcards: {deckSummary.new} new · {deckSummary.learning} learning ·
+        {deckSummary.mature} mature{#if deckSummary.trouble > 0}{' · '}<span class="trouble-count"
+            >{deckSummary.trouble} often missed</span
+          >{/if}
       {/if}
       {#if canBulkAdd}
         <button
@@ -726,6 +780,7 @@
 
     <div class="kanji-grid">
       {#each visibleKanji as kanji (kanji.character)}
+        {@const card = deckCards.get(kanji.character)}
         <div
           class="kanji-card"
           on:click={() => openKanjiModal(kanji)}
@@ -761,8 +816,15 @@
                 <span class="meta-item frequency">#{kanji.frequency}</span>
               {/if}
               <span class="meta-item strokes">{kanji.stroke_count} strokes</span>
-              {#if deck.has(kanji.character)}
-                <span class="meta-item deck" title="In your flashcards">★ Flashcard</span>
+              {#if card}
+                <span
+                  class="meta-item deck {isTroubleCard(card) ? 'trouble' : ''}"
+                  title={isTroubleCard(card)
+                    ? `Flashcard often missed (${card.correct_reviews}/${card.total_reviews} correct)`
+                    : `Flashcard: ${STAGE_LABELS[cardStage(card)]}`}
+                >
+                  ★ {isTroubleCard(card) ? 'Often missed' : STAGE_LABELS[cardStage(card)]}
+                </span>
               {/if}
             </div>
           </div>

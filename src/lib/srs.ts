@@ -70,3 +70,34 @@ export function chooseReviewType(
   }
   return weights[weights.length - 1][0];
 }
+
+export type DeckSort = 'due' | 'missed' | 'recent';
+
+function missedCount(card: SrsCard): number {
+  return card.total_reviews - card.correct_reviews;
+}
+
+function dueTime(card: SrsCard): number {
+  // Never-reviewed cards aren't due yet; they go after scheduled reviews
+  if (card.total_reviews === 0) return Number.POSITIVE_INFINITY;
+  const time = new Date(card.next_review).getTime();
+  return Number.isNaN(time) ? Number.NEGATIVE_INFINITY : time;
+}
+
+/** Compares two cards for sorting the deck (missing cards sort last). */
+export function compareCards(sort: DeckSort, a: SrsCard | undefined, b: SrsCard | undefined): number {
+  if (!a || !b) return a ? -1 : b ? 1 : 0;
+  switch (sort) {
+    case 'due':
+      return dueTime(a) - dueTime(b) || 0;
+    case 'missed':
+      return missedCount(b) - missedCount(a) || b.total_reviews - a.total_reviews;
+    case 'recent':
+      return b.created_at.localeCompare(a.created_at);
+  }
+}
+
+/** A card that keeps being forgotten: 4+ misses and under half correct. */
+export function isTroubleCard(card: SrsCard): boolean {
+  return missedCount(card) >= 4 && card.correct_reviews / card.total_reviews < 0.5;
+}
