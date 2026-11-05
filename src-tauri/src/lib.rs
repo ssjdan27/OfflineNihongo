@@ -1,3 +1,4 @@
+mod backup;
 mod game_times;
 mod kana;
 mod kanji;
@@ -6,9 +7,11 @@ mod storage;
 
 use chrono::Local;
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 
+use backup::{Backup, ImportSummary};
 use game_times::GameTimes;
 use kana::KanaChar;
 use kanji::{Kanji, KanjiLookup};
@@ -19,9 +22,11 @@ const CARDS_FILE: &str = "srs_cards.json";
 const HISTORY_FILE: &str = "review_history.json";
 const LEGACY_WEEKLY_STATS_FILE: &str = "weekly_stats.json";
 const GAME_TIMES_FILE: &str = "game_times.json";
+const LEGACY_REVIEW_LOG_FILE: &str = "review_log.json";
+const BACKUPS_DIR: &str = "backups";
 
-const SESSION_DUE_LIMIT: usize = 20;
-const SESSION_NEW_LIMIT: usize = 20;
+const DEFAULT_SESSION_LIMIT: u32 = 20;
+const MAX_SESSION_LIMIT: u32 = 500;
 
 fn resource_dir(app: &AppHandle) -> Result<PathBuf, String> {
     app.path()
@@ -39,13 +44,13 @@ fn open_kanji_db(app: &AppHandle) -> Result<rusqlite::Connection, String> {
     kanji::open_db(&resource_dir(app)?.join("data/kanji.db"))
 }
 
-fn load_cards(dir: &std::path::Path) -> Result<Vec<SrsCard>, String> {
+fn load_cards(dir: &Path) -> Result<Vec<SrsCard>, String> {
     read_json_or_default(&dir.join(CARDS_FILE))
 }
 
 /// Loads the review history, converting the `weekly_stats.json` file written
 /// by earlier versions if there is no history file yet.
-fn load_history(dir: &std::path::Path) -> Result<ReviewHistory, String> {
+fn load_history(dir: &Path) -> Result<ReviewHistory, String> {
     let path = dir.join(HISTORY_FILE);
     if path.exists() {
         return read_json_or_default(&path);
@@ -114,8 +119,19 @@ async fn get_study_stats(app: AppHandle) -> Result<StudyStats, String> {
     Ok(srs::compute_stats(&cards, &history, today, &Local))
 }
 
+fn session_limit(limit: Option<u32>) -> usize {
+    limit.unwrap_or(DEFAULT_SESSION_LIMIT).clamp(1, MAX_SESSION_LIMIT) as usize
+}
+
+/// Starts a study session with at most `due_limit` reviews and `new_limit`
+/// new cards (20 each by default).
 #[tauri::command]
-async fn start_review_session(app: AppHandle, session_type: String) -> Result<ReviewSession, String> {
+async fn start_review_session(
+    app: AppHandle,
+    session_type: String,
+    due_limit: Option<u32>,
+    new_limit: Option<u32>,
+) -> Result<ReviewSession, String> {
     let dir = data_dir(&app)?;
     let _guard = lock_data();
     let cards = load_cards(&dir)?;
@@ -125,8 +141,8 @@ async fn start_review_session(app: AppHandle, session_type: String) -> Result<Re
         &session_type,
         today,
         &Local,
-        SESSION_DUE_LIMIT,
-        SESSION_NEW_LIMIT,
+        session_limit(due_limit),
+        session_limit(new_limit),
     )
 }
 
@@ -226,6 +242,115 @@ async fn remove_card(app: AppHandle, character: String) -> Result<bool, String> 
     Ok(removed)
 }
 
+fn file_timestamp() -> String {
+    Local::now().format("%Y-%m-%d-%H%M%S").to_string()
+}
+
+fn current_backup(dir: &Path) -> Result<Backup, String> {
+    let times: GameTimes = read_json_or_default(&dir.join(GAME_TIMES_FILE))?;
+    Ok(Backup::new(
+        Local::now().to_rfc3339(),
+        load_cards(dir)?,
+        load_history(dir)?,
+        times.best_times,
+    ))
+}
+
+/// Copies the current data files into backups/<reason>-<time>/ in the app
+/// data folder before they are replaced. The files are copied as-is, so
+/// this works even if one of them can't be parsed.
+fn save_safety_copy(dir: &Path, reason: &str) -> Result<PathBuf, String> {
+    // Never reuse a folder: two imports in the same second would otherwise
+    // overwrite the first copy.
+    let base = format!("{}-{}", reason, file_timestamp());
+    let mut folder = dir.join(BACKUPS_DIR).join(&base);
+    let mut n = 2;
+    while folder.exists() {
+        folder = dir.join(BACKUPS_DIR).join(format!("{}-{}", base, n));
+        n += 1;
+    }
+    fs::create_dir_all(&folder)
+        .map_err(|e| format!("Failed to create {}: {}", folder.display(), e))?;
+    for name in [
+        CARDS_FILE,
+        HISTORY_FILE,
+        LEGACY_WEEKLY_STATS_FILE,
+        LEGACY_REVIEW_LOG_FILE,
+        GAME_TIMES_FILE,
+    ] {
+        let source = dir.join(name);
+        if source.exists() {
+            fs::copy(&source, folder.join(name))
+                .map_err(|e| format!("Failed to back up {}: {}", source.display(), e))?;
+        }
+    }
+    Ok(folder)
+}
+
+/// Writes all study progress to a backup file in the Downloads folder and
+/// returns its path.
+#[tauri::command]
+async fn export_backup(app: AppHandle) -> Result<String, String> {
+    let dir = data_dir(&app)?;
+    let target_dir = app
+        .path()
+        .download_dir()
+        .or_else(|_| app.path().document_dir())
+        .unwrap_or_else(|_| dir.join(BACKUPS_DIR));
+
+    let _guard = lock_data();
+    Ok(export_backup_to(&dir, &target_dir)?.to_string_lossy().into_owned())
+}
+
+fn export_backup_to(dir: &Path, target_dir: &Path) -> Result<PathBuf, String> {
+    let backup = current_backup(dir)?;
+    let path = target_dir.join(format!("OfflineNihongo-backup-{}.json", file_timestamp()));
+    write_json_atomic(&path, &backup)?;
+    Ok(path)
+}
+
+/// Replaces the flashcards, review history and best times with the
+/// contents of a backup file. The current data is copied aside first.
+#[tauri::command]
+async fn import_backup(app: AppHandle, contents: String) -> Result<ImportSummary, String> {
+    let dir = data_dir(&app)?;
+    let _guard = lock_data();
+    import_backup_into(&dir, &contents)
+}
+
+fn import_backup_into(dir: &Path, contents: &str) -> Result<ImportSummary, String> {
+    let backup = backup::parse_backup(contents)?;
+    save_safety_copy(dir, "before-import")?;
+    write_json_atomic(&dir.join(CARDS_FILE), &backup.cards)?;
+    write_json_atomic(&dir.join(HISTORY_FILE), &backup.review_history)?;
+    let times = GameTimes {
+        best_times: backup.best_times,
+    };
+    write_json_atomic(&dir.join(GAME_TIMES_FILE), &times)?;
+
+    Ok(ImportSummary {
+        cards: backup.cards.len(),
+        review_days: backup.review_history.len(),
+        best_times: times.best_times.len(),
+    })
+}
+
+/// Deletes all flashcards and review history (kana game best times are
+/// kept). Returns the folder holding a copy of the old data.
+#[tauri::command]
+async fn reset_flashcards(app: AppHandle) -> Result<String, String> {
+    let dir = data_dir(&app)?;
+    let _guard = lock_data();
+    Ok(reset_flashcards_in(&dir)?.to_string_lossy().into_owned())
+}
+
+fn reset_flashcards_in(dir: &Path) -> Result<PathBuf, String> {
+    let safety_copy = save_safety_copy(dir, "before-reset")?;
+    write_json_atomic(&dir.join(CARDS_FILE), &Vec::<SrsCard>::new())?;
+    write_json_atomic(&dir.join(HISTORY_FILE), &ReviewHistory::new())?;
+    Ok(safety_copy)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -246,8 +371,120 @@ pub fn run() {
             get_deck_characters,
             get_card,
             add_card,
-            remove_card
+            remove_card,
+            export_backup,
+            import_backup,
+            reset_flashcards
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application :(");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "offline-nihongo-lib-test-{}-{}",
+            name,
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn write_sample_data(dir: &Path) {
+        let now = Local::now();
+        let mut cards = vec![SrsCard::new("水", &now), SrsCard::new("火", &now)];
+        srs::apply_review(&mut cards[0], 3, &now).unwrap();
+        write_json_atomic(&dir.join(CARDS_FILE), &cards).unwrap();
+
+        let mut history = ReviewHistory::new();
+        srs::record_review(&mut history, now.date_naive(), true);
+        write_json_atomic(&dir.join(HISTORY_FILE), &history).unwrap();
+
+        let mut times = GameTimes::default();
+        times.record("hiragana-seion-basic", 61234);
+        write_json_atomic(&dir.join(GAME_TIMES_FILE), &times).unwrap();
+    }
+
+    #[test]
+    fn export_then_import_restores_everything() {
+        let source = temp_dir("export-source");
+        write_sample_data(&source);
+        let exported = export_backup_to(&source, &source.join("exports")).unwrap();
+
+        let target = temp_dir("export-target");
+        let summary =
+            import_backup_into(&target, &fs::read_to_string(&exported).unwrap()).unwrap();
+        assert_eq!(
+            summary,
+            ImportSummary {
+                cards: 2,
+                review_days: 1,
+                best_times: 1
+            }
+        );
+        assert_eq!(load_cards(&target).unwrap(), load_cards(&source).unwrap());
+        assert_eq!(load_history(&target).unwrap(), load_history(&source).unwrap());
+    }
+
+    #[test]
+    fn import_keeps_a_copy_of_the_replaced_data_even_if_it_is_corrupted() {
+        let dir = temp_dir("import-corrupted");
+        fs::write(dir.join(CARDS_FILE), "{ broken").unwrap();
+        assert!(load_cards(&dir).is_err());
+
+        let backup = Backup::new("x".into(), vec![], ReviewHistory::new(), HashMap::new());
+        import_backup_into(&dir, &serde_json::to_string(&backup).unwrap()).unwrap();
+
+        assert!(load_cards(&dir).unwrap().is_empty());
+        let copies: Vec<_> = fs::read_dir(dir.join(BACKUPS_DIR)).unwrap().collect();
+        assert_eq!(copies.len(), 1);
+        let copy = copies[0].as_ref().unwrap().path().join(CARDS_FILE);
+        assert_eq!(fs::read_to_string(copy).unwrap(), "{ broken");
+    }
+
+    #[test]
+    fn safety_copies_never_overwrite_each_other() {
+        let dir = temp_dir("safety-copies");
+        write_sample_data(&dir);
+        let first = save_safety_copy(&dir, "before-import").unwrap();
+        let second = save_safety_copy(&dir, "before-import").unwrap();
+        assert_ne!(first, second);
+        assert!(first.join(CARDS_FILE).exists() && second.join(CARDS_FILE).exists());
+    }
+
+    #[test]
+    fn invalid_imports_change_nothing() {
+        let dir = temp_dir("import-invalid");
+        write_sample_data(&dir);
+        let before = fs::read_to_string(dir.join(CARDS_FILE)).unwrap();
+        assert!(import_backup_into(&dir, "[1, 2, 3]").is_err());
+        assert_eq!(fs::read_to_string(dir.join(CARDS_FILE)).unwrap(), before);
+        assert!(!dir.join(BACKUPS_DIR).exists());
+    }
+
+    #[test]
+    fn reset_clears_flashcards_but_keeps_best_times() {
+        let dir = temp_dir("reset");
+        write_sample_data(&dir);
+        let copy = reset_flashcards_in(&dir).unwrap();
+
+        assert!(load_cards(&dir).unwrap().is_empty());
+        assert!(load_history(&dir).unwrap().is_empty());
+        let times: GameTimes = read_json_or_default(&dir.join(GAME_TIMES_FILE)).unwrap();
+        assert_eq!(times.best_times.len(), 1);
+        assert!(copy.join(CARDS_FILE).exists());
+    }
+
+    #[test]
+    fn session_limits_are_clamped() {
+        assert_eq!(session_limit(None), 20);
+        assert_eq!(session_limit(Some(0)), 1);
+        assert_eq!(session_limit(Some(50)), 50);
+        assert_eq!(session_limit(Some(100_000)), 500);
+    }
 }

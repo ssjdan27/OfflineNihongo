@@ -5,6 +5,7 @@
   import { type KanjiLookup, getGradeLabel, getJlptLabel } from '$lib/kanji';
   import { type SrsCard } from '$lib/srs';
   import { matchReading } from '$lib/answers';
+  import { getSessionLimits } from '$lib/preferences';
   import './flashcards.css';
 
   type KanjiCard = KanjiLookup;
@@ -107,7 +108,12 @@
     try {
       loading = true;
       notice = '';
-      const session: ReviewSession = await invoke('start_review_session', { sessionType });
+      const { dueLimit, newLimit } = getSessionLimits();
+      const session: ReviewSession = await invoke('start_review_session', {
+        sessionType,
+        dueLimit,
+        newLimit
+      });
       const cards = [...session.cards_due, ...session.cards_new];
       if (cards.length > 0) {
         queue = cards;

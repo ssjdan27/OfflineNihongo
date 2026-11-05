@@ -155,3 +155,108 @@ a:visited {
     align-self: flex-end;
   }
 }
+
+/* Flashcard options and data management */
+.setting-select {
+  padding: 0.4rem 0.6rem;
+  font-size: 1rem;
+  border-radius: 6px;
+  border: 1px solid var(--button-border, #ccc);
+  background-color: var(--button-bg, #f3f3f3);
+  color: var(--text-color, #000);
+}
+
+.setting-button {
+  flex-shrink: 0;
+  padding: 0.5rem 1rem;
+  font-size: 0.95rem;
+  border-radius: 6px;
+  border: 1px solid var(--button-border, #ccc);
+  background-color: var(--button-bg, #f3f3f3);
+  color: var(--text-color, #000);
+  cursor: pointer;
+}
+
+.setting-button:hover:not(:disabled) {
+  background-color: var(--button-hover-bg, #e0e0e0);
+}
+
+.setting-button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.setting-button.danger {
+  border-color: #d32f2f;
+  background-color: #d32f2f;
+  color: white;
+}
+
+.setting-button.danger:hover:not(:disabled) {
+  background-color: #b71c1c;
+}
+
+.hidden-file-input {
+  display: none;
+}
+
+.setting-info {
+  padding-right: 1rem;
+}
+
+.confirm-box {
+  margin: 0.5rem 0 1rem;
+  padding: 1rem;
+  border-radius: 8px;
+  border: 1px solid #d32f2f;
+  background-color: rgba(211, 47, 47, 0.06);
+}
+
+.confirm-box p {
+  margin: 0 0 0.75rem;
+}
+
+.confirm-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.data-message,
+.data-error {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.data-message {
+  background-color: rgba(76, 175, 80, 0.1);
+  border: 1px solid rgba(76, 175, 80, 0.4);
+}
+
+.data-error {
+  color: #d32f2f;
+  background-color: rgba(211, 47, 47, 0.08);
+  border: 1px solid rgba(211, 47, 47, 0.4);
+}
+
+:root.dark .data-error {
+  color: #ef9a9a;
+}
+
+.link-button {
+  margin-left: 0.5rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--link-color, #396cd8);
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: inherit;
+}
+
+.link-button:hover {
+  background: none;
+}
