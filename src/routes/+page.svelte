@@ -77,15 +77,19 @@
         <div class="today-text">
           {#if hasWork}
             <strong>
-              {#if stats.cards_due > 0}{plural(stats.cards_due, 'review')} due{/if}{#if stats.cards_due > 0 && stats.cards_new > 0}
-                · {/if}{#if stats.cards_new > 0}{plural(stats.cards_new, 'new card')}{/if}
+              {[
+                stats.cards_due > 0 ? `${plural(stats.cards_due, 'review')} due` : '',
+                stats.cards_new > 0 ? plural(stats.cards_new, 'new card') : ''
+              ]
+                .filter(Boolean)
+                .join(' · ')}
             </strong>
           {:else}
             <strong>All caught up for today</strong>
           {/if}
           <span>
             {#if stats.daily_streak > 0}
-              🔥 {plural(stats.daily_streak, 'day')} streak
+              🔥 {stats.daily_streak}-day streak
             {:else}
               Review today to start a streak
             {/if}
