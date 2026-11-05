@@ -98,6 +98,30 @@ impl SrsCard {
     }
 }
 
+/// Adds a new card for `character` unless the deck already has one.
+pub fn add_card<Tz: TimeZone>(
+    cards: &mut Vec<SrsCard>,
+    character: &str,
+    now: &DateTime<Tz>,
+) -> Result<SrsCard, String>
+where
+    Tz::Offset: Display,
+{
+    if cards.iter().any(|card| card.character == character) {
+        return Err(format!("{} is already in your flashcards", character));
+    }
+    let card = SrsCard::new(character, now);
+    cards.push(card.clone());
+    Ok(card)
+}
+
+/// Removes the card for `character`; returns whether there was one.
+pub fn remove_card(cards: &mut Vec<SrsCard>, character: &str) -> bool {
+    let before = cards.len();
+    cards.retain(|card| card.character != character);
+    cards.len() != before
+}
+
 fn scale(interval: i32, factor: f32) -> i32 {
     // `as` saturates on overflow; the result is clamped by the caller.
     (interval as f32 * factor) as i32
@@ -561,6 +585,22 @@ mod tests {
         let history = history_from_legacy_weekly_stats(&legacy);
         assert_eq!(history["2026-11-01"], DayStats { reviews: 3, correct: 2 });
         assert_eq!(history["2026-11-02"], DayStats { reviews: 1, correct: 0 });
+    }
+
+    #[test]
+    fn cards_can_be_added_once_and_removed() {
+        let tz = FixedOffset::east_opt(0).unwrap();
+        let now = at(&tz, 2026, 1, 1, 12);
+        let mut cards = Vec::new();
+
+        let card = add_card(&mut cards, "水", &now).unwrap();
+        assert!(card.is_new());
+        assert!(add_card(&mut cards, "水", &now).is_err());
+        assert_eq!(cards.len(), 1);
+
+        assert!(remove_card(&mut cards, "水"));
+        assert!(!remove_card(&mut cards, "水"));
+        assert!(cards.is_empty());
     }
 
     #[test]

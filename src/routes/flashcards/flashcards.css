@@ -889,3 +889,13 @@
     margin-top: 0.5rem;
   }
 }
+
+.add-cards-hint {
+  margin: 0.75rem 0 0;
+  font-size: 0.9rem;
+  color: var(--text-muted, #666);
+}
+
+.add-cards-hint a {
+  color: var(--link-color, #396cd8);
+}

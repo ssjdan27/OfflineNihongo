@@ -181,6 +181,51 @@ async fn add_new_cards(app: AppHandle, count: i32) -> Result<i32, String> {
     Ok(picked.len() as i32)
 }
 
+/// Characters of every kanji in the flashcard deck.
+#[tauri::command]
+async fn get_deck_characters(app: AppHandle) -> Result<Vec<String>, String> {
+    let dir = data_dir(&app)?;
+    let _guard = lock_data();
+    Ok(load_cards(&dir)?.into_iter().map(|c| c.character).collect())
+}
+
+/// The flashcard for `character`, if it is in the deck.
+#[tauri::command]
+async fn get_card(app: AppHandle, character: String) -> Result<Option<SrsCard>, String> {
+    let dir = data_dir(&app)?;
+    let _guard = lock_data();
+    Ok(load_cards(&dir)?.into_iter().find(|c| c.character == character))
+}
+
+/// Adds one specific kanji to the flashcards.
+#[tauri::command]
+async fn add_card(app: AppHandle, character: String) -> Result<SrsCard, String> {
+    let kanji = kanji::lookup(&open_kanji_db(&app)?, &character)?;
+    if kanji.meanings.is_empty() && kanji.onyomi.is_empty() && kanji.kunyomi.is_empty() {
+        return Err(format!("{} has no meanings or readings to study", character));
+    }
+
+    let dir = data_dir(&app)?;
+    let _guard = lock_data();
+    let mut cards = load_cards(&dir)?;
+    let card = srs::add_card(&mut cards, &character, &Local::now())?;
+    write_json_atomic(&dir.join(CARDS_FILE), &cards)?;
+    Ok(card)
+}
+
+/// Removes a kanji from the flashcards; returns whether it was in the deck.
+#[tauri::command]
+async fn remove_card(app: AppHandle, character: String) -> Result<bool, String> {
+    let dir = data_dir(&app)?;
+    let _guard = lock_data();
+    let mut cards = load_cards(&dir)?;
+    let removed = srs::remove_card(&mut cards, &character);
+    if removed {
+        write_json_atomic(&dir.join(CARDS_FILE), &cards)?;
+    }
+    Ok(removed)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -197,7 +242,11 @@ pub fn run() {
             get_study_stats,
             start_review_session,
             submit_card_review,
-            add_new_cards
+            add_new_cards,
+            get_deck_characters,
+            get_card,
+            add_card,
+            remove_card
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application :(");

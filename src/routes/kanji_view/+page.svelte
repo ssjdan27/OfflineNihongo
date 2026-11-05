@@ -11,6 +11,7 @@
     JLPT_LEVEL_HELP
   } from '$lib/kanji';
   import { createKanjiSearch } from '$lib/search';
+  import { type SrsCard, cardStage, STAGE_LABELS, formatDue } from '$lib/srs';
   import './kanji-view.css';
 
   // Cards are rendered in pages as the user scrolls; rendering all 13,000
@@ -32,6 +33,12 @@
   let appliedQuery = ''; // the query the current results were filtered with
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
   let selectedKanji: KanjiLookup | null = null;
+  // Flashcard deck
+  let deck = new Set<string>();
+  let selectedCard: SrsCard | null = null;
+  let cardBusy = false;
+  let cardError = '';
+  let confirmingRemove = false; // removing a reviewed card asks for a second click
   let modalOpen = false;
   let modalRequest = 0; // increments on every open/close so stale loads are ignored
   let kanjiSvg = '';
@@ -52,7 +59,8 @@
     { id: 'frequent', label: 'Top 1000 Frequent' },
     { id: 'grade', label: 'By Grade' },
     { id: 'jlpt', label: 'By JLPT Level' },
-    { id: 'strokes', label: 'By Stroke Count' }
+    { id: 'strokes', label: 'By Stroke Count' },
+    { id: 'deck', label: 'My Flashcards' }
   ];
 
   const jlptTabs = [
@@ -69,8 +77,28 @@
   ];
 
   onMount(async () => {
-    await loadKanji();
+    // Links from other pages: ?tab=deck, ?q=water, ?kanji=水
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab');
+    if (tab && tabs.some((t) => t.id === tab)) activeTab = tab;
+    searchQuery = params.get('q') ?? '';
+
+    await Promise.all([loadKanji(), loadDeck()]);
+
+    const kanjiParam = params.get('kanji');
+    const linked = kanjiParam ? kanjiList.find((k) => k.character === kanjiParam) : undefined;
+    if (linked) openKanjiModal(linked);
   });
+
+  async function loadDeck() {
+    try {
+      const characters: string[] = await invoke('get_deck_characters');
+      deck = new Set(characters);
+      if (activeTab === 'deck') filterKanji();
+    } catch (err) {
+      console.error('Failed to load flashcard deck:', err);
+    }
+  }
 
   onDestroy(() => {
     clearTimeout(searchTimer);
@@ -124,6 +152,10 @@
         filtered = [...filtered].sort(
           (a, b) => b.jlpt_level - a.jlpt_level || byFrequency(a, b)
         );
+        break;
+
+      case 'deck':
+        filtered = filtered.filter((k) => deck.has(k.character));
         break;
 
       case 'strokes': {
@@ -221,16 +253,26 @@
     const request = ++modalRequest;
     stopAnimation();
     detailError = '';
+    cardError = '';
+    confirmingRemove = false;
     modalOpen = true;
     svgLoading = true;
     kanjiSvg = '';
     totalStrokes = 0;
     currentStroke = 0;
+    selectedCard = null;
 
     try {
-      const details: KanjiLookup = await invoke('get_kanji', { character: kanji.character });
+      const [details, card] = await Promise.all([
+        invoke<KanjiLookup>('get_kanji', { character: kanji.character }),
+        invoke<SrsCard | null>('get_card', { character: kanji.character }).catch((err) => {
+          console.error('Failed to load flashcard:', err);
+          return null;
+        })
+      ]);
       if (request !== modalRequest) return;
       selectedKanji = details;
+      selectedCard = card;
     } catch (err) {
       if (request !== modalRequest) return;
       console.error('Error loading kanji details:', err);
@@ -261,6 +303,50 @@
       if (wrapper) wrapper.innerHTML = svg;
     }
     prepareDiagram();
+  }
+
+  async function addToDeck() {
+    if (!selectedKanji || cardBusy) return;
+    const character = selectedKanji.character;
+    cardBusy = true;
+    cardError = '';
+    try {
+      const card: SrsCard = await invoke('add_card', { character });
+      if (selectedKanji?.character === character) selectedCard = card;
+      deck = new Set(deck).add(character);
+      if (activeTab === 'deck') filterKanji();
+    } catch (err) {
+      cardError = `${err}`;
+    } finally {
+      cardBusy = false;
+    }
+  }
+
+  async function removeFromDeck() {
+    if (!selectedKanji || cardBusy) return;
+    const character = selectedKanji.character;
+    // window.confirm isn't available in every Tauri webview, so a card with
+    // review history needs a second click instead.
+    const hasProgress = selectedCard !== null && selectedCard.total_reviews > 0;
+    if (hasProgress && !confirmingRemove) {
+      confirmingRemove = true;
+      return;
+    }
+    confirmingRemove = false;
+    cardBusy = true;
+    cardError = '';
+    try {
+      await invoke('remove_card', { character });
+      if (selectedKanji?.character === character) selectedCard = null;
+      const next = new Set(deck);
+      next.delete(character);
+      deck = next;
+      if (activeTab === 'deck') filterKanji();
+    } catch (err) {
+      cardError = `${err}`;
+    } finally {
+      cardBusy = false;
+    }
   }
 
   function closeModal() {
@@ -465,7 +551,7 @@
         class="tab {activeTab === tab.id ? 'active' : ''}"
         on:click={() => setActiveTab(tab.id)}
       >
-        {tab.label}
+        {tab.label}{tab.id === 'deck' ? ` (${deck.size})` : ''}
       </button>
     {/each}
   </div>
@@ -532,8 +618,18 @@
         {:else}
           ({getJlptLabel(parseInt(activeJlptTab))})
         {/if}
+      {:else if activeTab === 'deck'}
+        (in your flashcards)
       {/if}
     </div>
+
+    {#if activeTab === 'deck' && deck.size === 0}
+      <div class="empty-state">
+        Your flashcard deck is empty. Open any kanji and choose
+        <strong>Add to flashcards</strong>, or add a batch from the
+        <a href="/flashcards">Flashcards</a> page.
+      </div>
+    {/if}
 
     <div class="kanji-grid">
       {#each visibleKanji as kanji (kanji.character)}
@@ -572,6 +668,9 @@
                 <span class="meta-item frequency">#{kanji.frequency}</span>
               {/if}
               <span class="meta-item strokes">{kanji.stroke_count} strokes</span>
+              {#if deck.has(kanji.character)}
+                <span class="meta-item deck" title="In your flashcards">★ Flashcard</span>
+              {/if}
             </div>
           </div>
         </div>
@@ -688,6 +787,34 @@
               </div>
             {:else}
               <div class="no-meanings">No meanings available</div>
+            {/if}
+          </div>
+
+          <div class="modal-info-section">
+            <h3>Flashcards</h3>
+            {#if selectedCard}
+              <div class="modal-reading">
+                <span class="modal-label">Status:</span>
+                {STAGE_LABELS[cardStage(selectedCard)]}
+                {#if selectedCard.total_reviews > 0}
+                  · {formatDue(selectedCard.next_review)}
+                  · {selectedCard.correct_reviews}/{selectedCard.total_reviews} correct
+                {/if}
+              </div>
+              <button
+                class="deck-button remove {confirmingRemove ? 'confirming' : ''}"
+                on:click={removeFromDeck}
+                disabled={cardBusy}
+              >
+                {confirmingRemove ? 'Click again to remove (progress will be lost)' : 'Remove from flashcards'}
+              </button>
+            {:else}
+              <button class="deck-button add" on:click={addToDeck} disabled={cardBusy}>
+                ＋ Add to flashcards
+              </button>
+            {/if}
+            {#if cardError}
+              <div class="card-error">{cardError}</div>
             {/if}
           </div>
 

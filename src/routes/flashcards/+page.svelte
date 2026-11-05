@@ -307,6 +307,14 @@
             <button class="add-button" on:click={() => addNewCards(10)}>+10 Cards</button>
             <button class="add-button" on:click={() => addNewCards(20)}>+20 Cards</button>
           </div>
+          <p class="add-cards-hint">
+            New cards are picked by school grade and frequency. You can also add specific kanji from the
+            <a href="/kanji_view">Kanji Database</a>
+            {#if studyStats.total_cards > 0}
+              or <a href="/kanji_view?tab=deck">browse your {studyStats.total_cards}
+                {studyStats.total_cards === 1 ? 'flashcard' : 'flashcards'}</a>
+            {/if}.
+          </p>
         </div>
 
         <!-- Quick Stats -->
