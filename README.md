@@ -39,6 +39,14 @@ npm test                        # frontend unit tests (Vitest)
 cd src-tauri && cargo test      # backend unit tests
 ```
 
+The end-to-end test (`e2e/app.test.mjs`) drives the real app through [tauri-driver](https://v2.tauri.app/develop/tests/webdriver/) on Linux, in a temporary profile so your own study data is never touched. It needs `tauri-driver` (`cargo install tauri-driver --locked`), `WebKitWebDriver` (the `webkit2gtk-driver` package) and a display such as `xvfb-run`:
+
+```bash
+npm run build
+(cd src-tauri && cargo build --features tauri/custom-protocol)
+xvfb-run -a npm run test:e2e
+```
+
 Study progress is stored as JSON files (`srs_cards.json`, `review_history.json`, `game_times.json`) in the app's local data folder, for example `~/.local/share/OfflineNihongo` on Linux, `%LOCALAPPDATA%\OfflineNihongo` on Windows and `~/Library/Application Support/OfflineNihongo` on macOS. Copies made before an import or reset are kept in its `backups` folder.
 
 ## Recommended IDE Setup

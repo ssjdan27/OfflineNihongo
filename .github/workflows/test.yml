@@ -49,3 +49,41 @@ jobs:
       - name: unit tests
         working-directory: src-tauri
         run: cargo test
+
+  e2e:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf webkit2gtk-driver xvfb
+
+      - name: setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: 'npm'
+
+      - name: install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: install tauri-driver
+        run: cargo install tauri-driver --locked
+
+      - name: install frontend dependencies
+        run: npm ci
+
+      - name: build the app with the frontend embedded
+        run: |
+          npm run build
+          cd src-tauri && cargo build --features tauri/custom-protocol
+
+      - name: end-to-end test
+        run: xvfb-run -a npm run test:e2e
