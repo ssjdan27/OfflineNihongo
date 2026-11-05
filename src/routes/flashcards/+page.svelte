@@ -6,6 +6,8 @@
   import { type SrsCard } from '$lib/srs';
   import { matchReading } from '$lib/answers';
   import { getSessionLimits } from '$lib/preferences';
+  import { speakableReadings } from '$lib/speech';
+  import SpeakButton from '$lib/components/SpeakButton.svelte';
   import './flashcards.css';
 
   type KanjiCard = KanjiLookup;
@@ -580,11 +582,13 @@
                       {#if currentKanjiData.onyomi}
                         <div class="reading-item">
                           <span class="reading-label">On'yomi:</span> {currentKanjiData.onyomi}
+                          <SpeakButton text={speakableReadings(currentKanjiData.onyomi)} label="Pronounce on'yomi" />
                         </div>
                       {/if}
                       {#if currentKanjiData.kunyomi}
                         <div class="reading-item">
                           <span class="reading-label">Kun'yomi:</span> {currentKanjiData.kunyomi}
+                          <SpeakButton text={speakableReadings(currentKanjiData.kunyomi)} label="Pronounce kun'yomi" />
                         </div>
                       {/if}
                     {/if}

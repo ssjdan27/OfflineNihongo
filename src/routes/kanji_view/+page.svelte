@@ -12,6 +12,8 @@
   } from '$lib/kanji';
   import { createKanjiSearch } from '$lib/search';
   import { type SrsCard, cardStage, STAGE_LABELS, formatDue } from '$lib/srs';
+  import { speakableReadings } from '$lib/speech';
+  import SpeakButton from '$lib/components/SpeakButton.svelte';
   import './kanji-view.css';
 
   // Cards are rendered in pages as the user scrolls; rendering all 13,000
@@ -806,11 +808,13 @@
             {#if selectedKanji.onyomi}
               <div class="modal-reading">
                 <span class="modal-label">On'yomi:</span> {selectedKanji.onyomi}
+                <SpeakButton text={speakableReadings(selectedKanji.onyomi)} label="Pronounce on'yomi" />
               </div>
             {/if}
             {#if selectedKanji.kunyomi}
               <div class="modal-reading">
                 <span class="modal-label">Kun'yomi:</span> {selectedKanji.kunyomi}
+                <SpeakButton text={speakableReadings(selectedKanji.kunyomi)} label="Pronounce kun'yomi" />
               </div>
             {/if}
             {#if selectedKanji.nanori && selectedKanji.nanori.length > 0}

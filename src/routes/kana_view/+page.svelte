@@ -2,6 +2,7 @@
     import { onDestroy, tick } from 'svelte';
     import { goto } from '$app/navigation';
     import { invoke } from '@tauri-apps/api/core';
+    import SpeakButton from '$lib/components/SpeakButton.svelte';
     import './kana-view.css';
 
     let activeTab: "Hiragana" | "Katakana" = "Hiragana";
@@ -439,7 +440,10 @@
     <div class="modal-overlay" on:click={handleOverlayClick}>
       <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="kana-modal-title">
         <div class="modal-header">
-          <h2 id="kana-modal-title">{selectedKana} ({selectedRomaji})</h2>
+          <h2 id="kana-modal-title">
+            {selectedKana} ({selectedRomaji})
+            <SpeakButton text={selectedKana} label="Pronounce" />
+          </h2>
           <button class="modal-close" on:click={closeModal} aria-label="Close modal">×</button>
         </div>
 
