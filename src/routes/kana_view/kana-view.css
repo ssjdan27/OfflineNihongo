@@ -664,3 +664,35 @@ button:hover {
     height: 110px;
   }
 }
+
+/* Self-quiz: hide the romaji under each kana */
+.romaji-toggle {
+  padding: 0.35rem 0.9rem;
+  font-size: 0.85rem;
+  border-radius: 999px;
+  border: 1px solid var(--button-border, #ccc);
+  background-color: var(--button-bg, #f3f3f3);
+  color: var(--text-color, #000);
+  cursor: pointer;
+}
+
+.romaji-toggle[aria-pressed='true'] {
+  border-color: var(--accent-color, #396cd8);
+  color: var(--accent-color, #396cd8);
+}
+
+.romaji-hint {
+  display: block;
+  margin-top: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--text-muted, #666);
+}
+
+.kana-chart.hide-romaji .romaji {
+  visibility: hidden;
+}
+
+.kana-chart.hide-romaji .kana-button:hover .romaji,
+.kana-chart.hide-romaji .kana-button:focus-visible .romaji {
+  visibility: visible;
+}

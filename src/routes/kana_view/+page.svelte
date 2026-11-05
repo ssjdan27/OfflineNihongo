@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onDestroy, tick } from 'svelte';
+    import { onMount, onDestroy, tick } from 'svelte';
     import { goto } from '$app/navigation';
     import { invoke } from '@tauri-apps/api/core';
     import SpeakButton from '$lib/components/SpeakButton.svelte';
@@ -7,6 +7,27 @@
 
     let activeTab: "Hiragana" | "Katakana" = "Hiragana";
     let activeSection: "gojuon" | "dakuon" | "yoon" = "gojuon";
+
+    // Self-quiz: hide the romaji under each kana (hover or focus to peek)
+    const HIDE_ROMAJI_KEY = 'kanaView.hideRomaji';
+    let hideRomaji = false;
+
+    onMount(() => {
+      try {
+        hideRomaji = localStorage.getItem(HIDE_ROMAJI_KEY) === 'true';
+      } catch {
+        hideRomaji = false;
+      }
+    });
+
+    function toggleRomaji() {
+      hideRomaji = !hideRomaji;
+      try {
+        localStorage.setItem(HIDE_ROMAJI_KEY, String(hideRomaji));
+      } catch {
+        // Not remembered; the toggle still works for this visit
+      }
+    }
 
     // Modal state
     let showModal = false;
@@ -379,6 +400,12 @@
   <!-- Section title -->
   <div class="section-title">
     <h2>{getSectionTitle()}</h2>
+    <button class="romaji-toggle" on:click={toggleRomaji} aria-pressed={hideRomaji}>
+      {hideRomaji ? 'Show romaji' : 'Hide romaji'}
+    </button>
+    {#if hideRomaji}
+      <span class="romaji-hint">Hover over a kana to check</span>
+    {/if}
   </div>
     
   <main class="kana-chart-container">
@@ -403,7 +430,7 @@
     {/if}
     
     <!-- Kana chart grid -->
-    <div class="kana-chart">
+    <div class="kana-chart {hideRomaji ? 'hide-romaji' : ''}">
       {#each kanaChart[activeTab.toLowerCase() as 'hiragana' | 'katakana'][activeSection] as row, rowIndex}
         <div class="kana-row">
           <!-- Row label -->
