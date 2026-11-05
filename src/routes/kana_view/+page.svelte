@@ -231,12 +231,9 @@
     }
 
     function prepareDiagram(wrapper: Element) {
+      // Sizes are set in kana-view.css
       const diagrams = getDiagrams();
-      const size = diagrams.length > 1 ? '130px' : '260px';
       for (const svg of diagrams) {
-        svg.style.width = size;
-        svg.style.height = size;
-        svg.style.display = 'block';
         svg.style.backgroundColor = 'white';
       }
       wrapper.classList.toggle('multiple', diagrams.length > 1);

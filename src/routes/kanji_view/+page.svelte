@@ -354,11 +354,7 @@
     const svg = getDiagram();
     if (!svg) return;
 
-    svg.style.width = '300px';
-    svg.style.height = '300px';
-    svg.style.display = 'block';
-    svg.style.margin = '0 auto';
-
+    // Size is set in kanji-view.css
     if (isAnimCJK(svg)) {
       svg.style.backgroundColor = 'white';
       // Light grey outline of the whole character behind the strokes

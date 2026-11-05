@@ -377,6 +377,7 @@
   align-items: center;
   z-index: 1000;
   padding: 1rem;
+  box-sizing: border-box; /* keep the padded overlay inside the window */
 }
 
 .modal-content {
@@ -752,5 +753,46 @@
   
   .stroke-counter, .speed-control label, .speed-display {
     font-size: 0.75rem;
+  }
+}
+
+/* Stroke diagram size. Set here rather than inline so short windows can
+   shrink it (KanjiVG files are 109px and AnimCJK files have no size). */
+.svg-wrapper svg {
+  width: 300px;
+  height: 300px;
+  display: block;
+  margin: 0 auto;
+}
+
+/* Short windows (the app opens at 1024x720 and can be resized smaller):
+   compact the dialog so the animation controls stay in view */
+@media (max-height: 760px) {
+  .modal-content {
+    max-height: calc(100vh - 2rem);
+  }
+
+  .modal-header {
+    padding: 0.75rem 1.5rem;
+  }
+
+  .modal-body {
+    padding: 1rem 1.5rem;
+    gap: 1.5rem;
+  }
+
+  .modal-kanji-character {
+    font-size: 3.5rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .svg-wrapper {
+    min-height: 0;
+    padding: 0.5rem;
+  }
+
+  .svg-wrapper svg {
+    width: 220px;
+    height: 220px;
   }
 }
