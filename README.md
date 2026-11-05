@@ -4,15 +4,41 @@ A Japanese language learning tool built with Tauri, SvelteKit and TypeScript.
 
 ## About
 
-OfflineNihongo is an offline-capable application for studying Japanese kanji and kana. It provides detailed information about kanji characters including readings, meanings, stroke counts, and more.
+OfflineNihongo is an offline application for studying Japanese kana and kanji. Everything runs locally: the dictionary and stroke order data are bundled with the app, and your progress is stored on your computer.
 
 ## Features
 
-- Offline kanji lookup
-- Detailed information including stroke count, grade, JLPT level, and frequency
-- Multiple readings (onyomi, kunyomi) and meanings
-- Name readings (nanori)
-- Stroke order diagrams for kanji characters
+- **Kana chart** – hiragana and katakana (gojūon, dakuon/handakuon and yōon) with animated stroke order and pronunciation.
+- **Kana speed game** – type the romaji for each kana against the clock. Common alternative spellings (si/shi, tu/tsu, …) are accepted, mistakes and skips are tracked, best times are kept for every combination of settings, and you can replay just the characters you missed.
+- **Kanji database** – 13,108 kanji from KANJIDIC2 with readings, meanings, nanori, stroke count, school grade, old JLPT level and frequency rank.
+  - Search by English meaning, by reading in kana or romaji (`mizu`, `taberu`), or paste a word (`日本語`) to see its kanji; results are ranked with common kanji first.
+  - Browse by frequency, grade, JLPT level or stroke count.
+  - Stroke order diagrams with play, stop, reset and show-all controls and adjustable speed.
+- **Kanji flashcards (spaced repetition)** – meaning and reading reviews scheduled with an SM-2 style algorithm.
+  - Add kanji automatically by grade and frequency, individually from the Kanji Database, or a whole list at once (e.g. all JLPT 4 kanji).
+  - Keyboard shortcuts (Space to reveal, 1–4 to grade), optional typed answers for readings, and missed cards come back later in the same session.
+  - Dashboard with due/new/learning/mature counts, a seven-day review forecast, weekly history and daily streak.
+- **Pronunciation** – 🔊 buttons use your system's Japanese text-to-speech voice when one is installed.
+- **Settings** – dark mode, study session size, and export/import of a backup file.
+
+## Development
+
+Install the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your platform, then:
+
+```bash
+npm install
+npm run tauri dev
+```
+
+Checks and tests (also run by the `test` GitHub Actions workflow):
+
+```bash
+npm run check                   # Svelte/TypeScript type checking
+npm test                        # frontend unit tests (Vitest)
+cd src-tauri && cargo test      # backend unit tests
+```
+
+Study progress is stored as JSON files (`srs_cards.json`, `review_history.json`, `game_times.json`) in the app's local data folder, for example `~/.local/share/OfflineNihongo` on Linux, `%LOCALAPPDATA%\OfflineNihongo` on Windows and `~/Library/Application Support/OfflineNihongo` on macOS. Copies made before an import or reset are kept in its `backups` folder.
 
 ## Recommended IDE Setup
 
