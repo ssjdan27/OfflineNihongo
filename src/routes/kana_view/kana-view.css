@@ -159,6 +159,7 @@ button:hover {
 }
 
 .kana-char {
+  font-family: var(--font-jp-display);
   font-size: 1.8rem;
   font-weight: normal;
   line-height: 1;
@@ -247,6 +248,7 @@ button:hover {
 }
 
 .modal-kana-character {
+  font-family: var(--font-jp-display);
   font-size: 6rem;
   font-weight: bold;
   color: var(--accent-color, #396cd8);

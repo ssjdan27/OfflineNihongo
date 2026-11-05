@@ -36,14 +36,14 @@
     font-size: 1.1rem;
     border-radius: 8px;
     cursor: pointer;
-    border: 2px solid #396cd8;
-    background: white;
-    color: #396cd8;
+    border: 2px solid var(--accent-color, #396cd8);
+    background: var(--section-bg, white);
+    color: var(--accent-color, #396cd8);
     transition: all 0.2s;
   }
 
   button:hover {
-    background: #396cd8;
+    background: var(--accent-color, #396cd8);
     color: white;
   }
 </style>

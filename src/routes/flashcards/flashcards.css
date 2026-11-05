@@ -13,7 +13,7 @@
   border: 1px solid var(--button-border, #ccc);
   border-radius: 6px;
   cursor: pointer;
-  color: #000000;
+  color: var(--text-color, #000);
   transition: background-color 0.2s;
 }
 
@@ -347,6 +347,7 @@
 }
 
 .kanji-character {
+  font-family: var(--font-jp-display);
   font-size: 8rem;
   font-weight: bold;
   color: var(--accent-color, #396cd8);

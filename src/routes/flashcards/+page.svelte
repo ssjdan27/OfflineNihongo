@@ -59,6 +59,8 @@
   let sessionComplete = false;
   let notice = '';
   let submitting = false; // blocks double-clicks from reviewing a card twice
+
+  $: remainingCards = (reviewSession?.cards_due.length || 0) + (reviewSession?.cards_new.length || 0);
   let reviewType = 'meaning'; // 'meaning' or 'reading'
 
   onMount(async () => {
@@ -359,7 +361,7 @@
         <div class="session-header">
           <div class="session-progress">
             <div class="progress-info">
-              Remaining: {(reviewSession?.cards_due.length || 0) + (reviewSession?.cards_new.length || 0)} cards
+              Remaining: {remainingCards} {remainingCards === 1 ? 'card' : 'cards'}
             </div>
             <div class="session-stats">
               Reviews: {reviewSession?.session_stats.total_reviews || 0} | 

@@ -11,13 +11,12 @@
   border: 1px solid var(--button-border, #ccc);
   border-radius: 6px;
   cursor: pointer;
-  color: #000000;
+  color: var(--text-color, #000);
   transition: background-color 0.2s;
 }
 
 .home-button:hover {
   background-color: var(--button-hover-bg, #e0e0e0);
-  color: #000000;
 }
 
 .kanji-container {
@@ -188,6 +187,7 @@
 }
 
 .kanji-character {
+  font-family: var(--font-jp-display);
   font-size: 3rem;
   font-weight: bold;
   text-align: center;
@@ -440,6 +440,7 @@
 }
 
 .modal-kanji-character {
+  font-family: var(--font-jp-display);
   font-size: 6rem;
   font-weight: bold;
   color: var(--accent-color, #396cd8);
