@@ -323,7 +323,11 @@ pub struct StudyStats {
     pub week_dates: Vec<String>,
     pub reviews_this_week: Vec<i32>,
     pub accuracy_this_week: Vec<f32>,
+    /// Reviews coming due on each of the next seven days (index 0 = tomorrow).
+    pub forecast: Vec<i32>,
 }
+
+const FORECAST_DAYS: i64 = 7;
 
 pub fn compute_stats<Tz: TimeZone>(
     cards: &[SrsCard],
@@ -337,6 +341,7 @@ pub fn compute_stats<Tz: TimeZone>(
     let mut cards_mature = 0;
     let mut total_reviews = 0;
     let mut correct_reviews = 0;
+    let mut forecast = vec![0; FORECAST_DAYS as usize];
 
     for card in cards {
         total_reviews += card.total_reviews;
@@ -346,8 +351,11 @@ pub fn compute_stats<Tz: TimeZone>(
             cards_new += 1;
             continue;
         }
-        if card.is_due(today, tz) {
+        let days_until_due = (card.due_date(tz) - today).num_days();
+        if days_until_due <= 0 {
             cards_due += 1;
+        } else if days_until_due <= FORECAST_DAYS {
+            forecast[(days_until_due - 1) as usize] += 1;
         }
         if card.level >= MATURE_LEVEL {
             cards_mature += 1;
@@ -389,6 +397,7 @@ pub fn compute_stats<Tz: TimeZone>(
         week_dates,
         reviews_this_week,
         accuracy_this_week,
+        forecast,
     }
 }
 
@@ -537,6 +546,25 @@ mod tests {
         assert_eq!(stats.cards_mature, 1);
         assert_eq!(stats.total_reviews, 6);
         assert!((stats.accuracy - 5.0 / 6.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn forecast_counts_reviews_for_the_next_week() {
+        let tz = FixedOffset::east_opt(0).unwrap();
+        let cards = vec![
+            reviewed_card(&tz, &[3]),          // due Jan 2 (tomorrow)
+            reviewed_card(&tz, &[1]),          // due Jan 2 (tomorrow)
+            reviewed_card(&tz, &[3, 3]),       // due Jan 7 (in 6 days)
+            reviewed_card(&tz, &[3, 3, 3]),    // due Jan 16: beyond the forecast
+        ];
+        let stats = compute_stats(&cards, &ReviewHistory::new(), date(2026, 1, 1), &tz);
+        assert_eq!(stats.cards_due, 0);
+        assert_eq!(stats.forecast, vec![2, 0, 0, 0, 0, 1, 0]);
+
+        // Once a day has passed, overdue cards move into "due".
+        let later = compute_stats(&cards, &ReviewHistory::new(), date(2026, 1, 3), &tz);
+        assert_eq!(later.cards_due, 2);
+        assert_eq!(later.forecast, vec![0, 0, 0, 1, 0, 0, 0]);
     }
 
     #[test]

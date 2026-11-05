@@ -26,6 +26,7 @@
     week_dates: string[]; // last 7 days as YYYY-MM-DD, oldest first (last = today)
     reviews_this_week: number[];
     accuracy_this_week: number[];
+    forecast: number[]; // reviews coming due on each of the next 7 days (0 = tomorrow)
   }
 
   // A card graded "Again" comes back after this many other cards
@@ -294,6 +295,14 @@
     return `${count} ${count === 1 ? word : word + 's'}`;
   }
 
+  // "Tomorrow", then weekday names for the forecast columns
+  function forecastLabel(daysFromToday: number): string {
+    if (daysFromToday === 1) return 'Tomorrow';
+    const date = new Date();
+    date.setDate(date.getDate() + daysFromToday);
+    return date.toLocaleDateString('en-US', { weekday: 'short' });
+  }
+
   // Label a "YYYY-MM-DD" date from the backend with its weekday name.
   function weekdayLabel(dateStr: string | undefined, style: 'short' | 'long'): string {
     if (!dateStr) return '';
@@ -404,6 +413,35 @@
             <span class="value">{(studyStats.accuracy * 100).toFixed(1)}%</span>
           </div>
         </div>
+
+        <!-- Upcoming reviews -->
+        {#if studyStats.forecast}
+          {@const forecastTotal = studyStats.forecast.reduce((sum, n) => sum + n, 0)}
+          {@const forecastMax = Math.max(...studyStats.forecast, 1)}
+          <div class="forecast">
+            <h3>Upcoming Reviews</h3>
+            {#if forecastTotal === 0}
+              <p class="forecast-empty">
+                {studyStats.total_cards - studyStats.cards_new > 0
+                  ? 'Nothing else comes due in the next 7 days.'
+                  : 'Reviews will show up here once you start studying.'}
+              </p>
+            {:else}
+              <div class="forecast-days">
+                {#each studyStats.forecast as count, i}
+                  <div class="forecast-day" title="{plural(count, 'review')}">
+                    <div class="forecast-count">{count}</div>
+                    <div class="forecast-bar-track">
+                      <div class="forecast-bar" style="height: {(count / forecastMax) * 100}%"></div>
+                    </div>
+                    <div class="forecast-label">{forecastLabel(i + 1)}</div>
+                  </div>
+                {/each}
+              </div>
+              <p class="forecast-total">{plural(forecastTotal, 'review')} in the next 7 days</p>
+            {/if}
+          </div>
+        {/if}
 
         <!-- Weekly Progress Chart -->
         {#if studyStats.reviews_this_week.length > 0}
