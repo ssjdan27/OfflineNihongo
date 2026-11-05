@@ -49,6 +49,7 @@
     daily_streak: number;
     total_reviews: number;
     accuracy: number;
+    week_dates: string[]; // last 7 days as YYYY-MM-DD, oldest first (last = today)
     reviews_this_week: number[];
     accuracy_this_week: number[];
   }
@@ -65,6 +66,7 @@
   let sessionStartTime = 0;
   let sessionEndTime = 0;
   let notice = '';
+  let submitting = false; // blocks double-clicks from reviewing a card twice
   let reviewType = 'meaning'; // 'meaning' or 'reading'
 
   onMount(async () => {
@@ -135,8 +137,9 @@
   }
 
   async function submitAnswer(grade: number) {
-    if (!currentCard || !reviewSession) return;
+    if (!currentCard || !reviewSession || submitting) return;
 
+    submitting = true;
     try {
       // Submit the answer and get updated card
       const updatedCard = await invoke('submit_card_review', {
@@ -163,6 +166,8 @@
     } catch (err) {
       error = `Failed to submit answer: ${err}`;
       console.error('Error submitting answer:', err);
+    } finally {
+      submitting = false;
     }
   }
 
@@ -202,6 +207,16 @@
       return `${minutes}m ${seconds % 60}s`;
     }
     return `${seconds}s`;
+  }
+
+  // Label a "YYYY-MM-DD" date from the backend with its weekday name.
+  function weekdayLabel(dateStr: string | undefined, style: 'short' | 'long'): string {
+    if (!dateStr) return '';
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    const today = new Date();
+    if (date.toDateString() === today.toDateString()) return 'Today';
+    return date.toLocaleDateString('en-US', { weekday: style });
   }
 
   function getGradeLabel(grade: number): string {
@@ -321,12 +336,12 @@
                     <div class="bar-container">
                       <div 
                         class="bar reviews" 
-                        style="height: {Math.max(4, (reviews / Math.max(...studyStats.reviews_this_week)) * 100)}px"
+                        style="height: {Math.max(4, (reviews / Math.max(...studyStats.reviews_this_week, 1)) * 100)}px"
                         title="{reviews} reviews"
                       ></div>
                     </div>
                     <div class="day-label">
-                      {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][i]}
+                      {weekdayLabel(studyStats.week_dates[i], 'short')}
                     </div>
                     <div class="day-stats">
                       <div class="reviews-count">{reviews}</div>
@@ -423,16 +438,16 @@
 
                 <!-- Grading Buttons -->
                 <div class="grade-buttons">
-                  <button class="grade-button fail" on:click={() => submitAnswer(1)}>
+                  <button class="grade-button fail" disabled={submitting} on:click={() => submitAnswer(1)}>
                     Again<br><span class="grade-desc">Complete blackout</span>
                   </button>
-                  <button class="grade-button hard" on:click={() => submitAnswer(2)}>
+                  <button class="grade-button hard" disabled={submitting} on:click={() => submitAnswer(2)}>
                     Hard<br><span class="grade-desc">Incorrect but remembered</span>
                   </button>
-                  <button class="grade-button good" on:click={() => submitAnswer(3)}>
+                  <button class="grade-button good" disabled={submitting} on:click={() => submitAnswer(3)}>
                     Good<br><span class="grade-desc">Correct with effort</span>
                   </button>
-                  <button class="grade-button easy" on:click={() => submitAnswer(4)}>
+                  <button class="grade-button easy" disabled={submitting} on:click={() => submitAnswer(4)}>
                     Easy<br><span class="grade-desc">Perfect recall</span>
                   </button>
                 </div>
@@ -514,7 +529,7 @@
               </div>
               {#each studyStats.reviews_this_week as reviews, i}
                 <div class="weekly-row">
-                  <div class="day-name">{['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][i]}</div>
+                  <div class="day-name">{weekdayLabel(studyStats.week_dates[i], 'long')}</div>
                   <div class="reviews-bar">
                     <div class="bar-bg">
                       <div 
