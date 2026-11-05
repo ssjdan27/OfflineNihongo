@@ -886,3 +886,30 @@
   font-size: 0.9rem;
   color: var(--text-muted, #666);
 }
+
+/* Stroke order / writing practice tabs in the details dialog */
+.panel-tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.panel-tabs button {
+  padding: 0.3rem 0.8rem;
+  font-size: 0.85rem;
+  border-radius: 999px;
+  border: 1px solid var(--button-border, #ccc);
+  background-color: var(--button-bg, #f3f3f3);
+  color: var(--text-color, #000);
+  cursor: pointer;
+}
+
+.panel-tabs button.active {
+  border-color: var(--accent-color, #396cd8);
+  background-color: var(--accent-color, #396cd8);
+  color: white;
+}
+
+.panel-hidden {
+  display: none !important;
+}

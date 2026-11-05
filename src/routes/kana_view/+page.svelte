@@ -3,6 +3,7 @@
     import { goto } from '$app/navigation';
     import { invoke } from '@tauri-apps/api/core';
     import SpeakButton from '$lib/components/SpeakButton.svelte';
+    import WritingPad from '$lib/components/WritingPad.svelte';
     import './kana-view.css';
 
     let activeTab: "Hiragana" | "Katakana" = "Hiragana";
@@ -39,6 +40,16 @@
     // Stroke order diagram: one SVG per character (yōon like きゃ have two)
     let kanaSvgs: string[] = [];
     let svgLoading = false;
+
+    // Left panel of the dialog: stroke order diagram or writing pad
+    let leftPanel: 'diagram' | 'practice' = 'diagram';
+    let windowHeight = 800;
+    $: padSize = windowHeight < 760 ? 200 : 260;
+
+    function setLeftPanel(panel: 'diagram' | 'practice') {
+      if (panel === 'practice') stopAnimation();
+      leftPanel = panel;
+    }
 
     // Animation state
     let animationSpeed = 1000; // milliseconds per stroke
@@ -478,7 +489,33 @@
           <div class="modal-left">
             <div class="modal-kana-character">{selectedKana}</div>
 
-            <div class="modal-svg-container">
+            <div class="panel-tabs" role="tablist">
+              <button
+                role="tab"
+                aria-selected={leftPanel === 'diagram'}
+                class:active={leftPanel === 'diagram'}
+                on:click={() => setLeftPanel('diagram')}
+              >Stroke order</button>
+              <button
+                role="tab"
+                aria-selected={leftPanel === 'practice'}
+                class:active={leftPanel === 'practice'}
+                on:click={() => setLeftPanel('practice')}
+              >Practice writing</button>
+            </div>
+
+            {#if leftPanel === 'practice'}
+              <div class="modal-svg-container">
+                <WritingPad
+                  character={selectedKana}
+                  expectedStrokes={totalStrokes}
+                  size={padSize}
+                />
+              </div>
+            {/if}
+
+            <!-- Kept in the page while practicing so the diagram doesn't reload -->
+            <div class="modal-svg-container" class:panel-hidden={leftPanel !== 'diagram'}>
               {#if svgLoading}
                 <div class="svg-loading">Loading stroke order...</div>
               {:else if kanaSvgs.length > 0}
@@ -542,4 +579,4 @@
     </div>
   {/if}
 
-<svelte:window on:keydown={handleKeydown} />
+<svelte:window on:keydown={handleKeydown} bind:innerHeight={windowHeight} />

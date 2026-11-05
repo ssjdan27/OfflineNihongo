@@ -14,6 +14,7 @@
   import { type SrsCard, cardStage, STAGE_LABELS, formatDue } from '$lib/srs';
   import { speakableReadings } from '$lib/speech';
   import SpeakButton from '$lib/components/SpeakButton.svelte';
+  import WritingPad from '$lib/components/WritingPad.svelte';
   import './kanji-view.css';
 
   // Cards are rendered in pages as the user scrolls; rendering all 13,000
@@ -50,6 +51,16 @@
   let modalRequest = 0; // increments on every open/close so stale loads are ignored
   let kanjiSvg = '';
   let svgLoading = false;
+
+  // Left panel of the details dialog: stroke order diagram or writing pad
+  let leftPanel: 'diagram' | 'practice' = 'diagram';
+  let windowHeight = 800;
+  $: padSize = windowHeight < 760 ? 200 : 260;
+
+  function setLeftPanel(panel: 'diagram' | 'practice') {
+    if (panel === 'practice') stopAnimation();
+    leftPanel = panel;
+  }
 
   // Stroke order animation
   let isAnimating = false;
@@ -806,7 +817,33 @@
         <div class="modal-left">
           <div class="modal-kanji-character">{selectedKanji.character}</div>
 
-          <div class="modal-svg-container">
+          <div class="panel-tabs" role="tablist">
+            <button
+              role="tab"
+              aria-selected={leftPanel === 'diagram'}
+              class:active={leftPanel === 'diagram'}
+              on:click={() => setLeftPanel('diagram')}
+            >Stroke order</button>
+            <button
+              role="tab"
+              aria-selected={leftPanel === 'practice'}
+              class:active={leftPanel === 'practice'}
+              on:click={() => setLeftPanel('practice')}
+            >Practice writing</button>
+          </div>
+
+          {#if leftPanel === 'practice'}
+            <div class="modal-svg-container">
+              <WritingPad
+                character={selectedKanji.character}
+                expectedStrokes={selectedKanji.stroke_count}
+                size={padSize}
+              />
+            </div>
+          {/if}
+
+          <!-- Kept in the page while practicing so the diagram doesn't reload -->
+          <div class="modal-svg-container" class:panel-hidden={leftPanel !== 'diagram'}>
             {#if svgLoading}
               <div class="svg-loading">Loading stroke order...</div>
             {:else if kanjiSvg}
@@ -950,4 +987,4 @@
   </div>
 {/if}
 
-<svelte:window on:keydown={handleKeydown} />
+<svelte:window on:keydown={handleKeydown} bind:innerHeight={windowHeight} />
