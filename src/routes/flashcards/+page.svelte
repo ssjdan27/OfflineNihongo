@@ -198,6 +198,12 @@
 
   function dismissError() {
     error = '';
+    goToDashboard();
+  }
+
+  // Reload the stats too: reviews done in an unfinished session already
+  // changed the counts.
+  function goToDashboard() {
     currentView = 'dashboard';
     loadStudyStats();
   }
@@ -230,7 +236,7 @@
 <div class="nav-bar">
   <button class="home-button" on:click={goToHome}>Back to Home</button>
   {#if currentView !== 'dashboard'}
-    <button class="back-button" on:click={() => currentView = 'dashboard'}>Dashboard</button>
+    <button class="back-button" on:click={goToDashboard}>Dashboard</button>
   {/if}
 </div>
 
@@ -472,7 +478,7 @@
               <span class="stat-value">{formatTimeSpent((sessionEndTime || Date.now()) - sessionStartTime)}</span>
             </div>
           </div>
-          <button class="continue-button" on:click={() => currentView = 'dashboard'}>
+          <button class="continue-button" on:click={goToDashboard}>
             Back to Dashboard
           </button>
         </div>
@@ -640,7 +646,7 @@
           </div>
         </div>
 
-        <button class="back-button" on:click={() => currentView = 'dashboard'}>
+        <button class="back-button" on:click={goToDashboard}>
           Back to Dashboard
         </button>
       {/if}
