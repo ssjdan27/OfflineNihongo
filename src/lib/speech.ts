@@ -37,7 +37,15 @@ function loadVoice(): Promise<SpeechSynthesisVoice | null> {
 }
 
 function japaneseVoice(): Promise<SpeechSynthesisVoice | null> {
-  voicePromise ??= loadVoice();
+  if (!voicePromise) {
+    const pending = loadVoice();
+    voicePromise = pending;
+    // Only remember a voice that was found: voices can finish loading
+    // after the first check, so look again next time.
+    pending.then((voice) => {
+      if (!voice && voicePromise === pending) voicePromise = null;
+    });
+  }
   return voicePromise;
 }
 
