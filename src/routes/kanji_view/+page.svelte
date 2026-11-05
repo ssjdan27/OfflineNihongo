@@ -53,6 +53,10 @@
   let animationTimer: ReturnType<typeof setTimeout> | null = null;
 
   $: visibleKanji = filteredKanji.slice(0, visibleCount);
+  // Position of the open kanji in the current list, for previous/next
+  $: selectedIndex = selectedKanji
+    ? filteredKanji.findIndex((k) => k.character === selectedKanji?.character)
+    : -1;
 
   const tabs = [
     { id: 'all', label: 'All Kanji' },
@@ -359,9 +363,29 @@
   }
 
   function handleKeydown(event: KeyboardEvent) {
-    if (event.key === 'Escape' && modalOpen) {
+    if (!modalOpen) return;
+    if (event.key === 'Escape') {
       closeModal();
+      return;
     }
+    // Arrow keys step through the list, unless a control (like the speed
+    // slider) is using them
+    const target = event.target as HTMLElement | null;
+    if (target?.closest('input, select, textarea')) return;
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      event.preventDefault();
+      showAdjacent(event.key === 'ArrowLeft' ? -1 : 1);
+    }
+  }
+
+  function showAdjacent(offset: number) {
+    if (selectedIndex < 0) return;
+    const index = selectedIndex + offset;
+    const next = filteredKanji[index];
+    if (!next) return;
+    // Keep the grid behind the dialog in step with the dialog
+    if (index >= visibleCount) visibleCount = index + 1;
+    openKanjiModal(next);
   }
 
   // Close only when the backdrop itself is clicked, not the dialog
@@ -698,7 +722,26 @@
     <div class="modal-content" role="document">
       <div class="modal-header">
         <h2 id="modal-title">Kanji Details</h2>
-        <button class="close-button" on:click={closeModal} aria-label="Close modal">×</button>
+        <div class="modal-header-actions">
+          {#if selectedIndex >= 0}
+            <button
+              class="nav-arrow"
+              on:click={() => showAdjacent(-1)}
+              disabled={selectedIndex === 0}
+              aria-label="Previous kanji"
+              title="Previous (←)"
+            >‹</button>
+            <span class="nav-position">{selectedIndex + 1} / {filteredKanji.length}</span>
+            <button
+              class="nav-arrow"
+              on:click={() => showAdjacent(1)}
+              disabled={selectedIndex === filteredKanji.length - 1}
+              aria-label="Next kanji"
+              title="Next (→)"
+            >›</button>
+          {/if}
+          <button class="close-button" on:click={closeModal} aria-label="Close modal">×</button>
+        </div>
       </div>
 
       <div class="modal-body">

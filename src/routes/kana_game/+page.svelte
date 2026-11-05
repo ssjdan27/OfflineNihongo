@@ -55,6 +55,9 @@
   // Best times keyed by game settings (see generateGameKey)
   let bestTimes: Record<string, number> = {};
   let isNewBest = false;
+  // A practice round replays only the characters missed in the last game
+  // and doesn't count toward best times.
+  let practiceRound = false;
 
   $: selectedCount = filterKana(kanaData, gameMode, soundTypes, complexity).length;
   $: gameKey = generateGameKey(gameMode, soundTypes, complexity);
@@ -133,10 +136,20 @@
   }
 
   async function startGame() {
-    const filtered = filterKana(kanaData, gameMode, soundTypes, complexity);
-    if (filtered.length === 0) return;
+    practiceRound = false;
+    await beginRound(filterKana(kanaData, gameMode, soundTypes, complexity));
+  }
 
-    gameKana = shuffleArray(filtered);
+  async function practiceMissed() {
+    const missed = troubleKana.map((t) => t.kana);
+    practiceRound = true;
+    await beginRound(missed);
+  }
+
+  async function beginRound(kana: KanaChar[]) {
+    if (kana.length === 0) return;
+
+    gameKana = shuffleArray(kana);
     currentIndex = 0;
     correctCount = 0;
     mistakeCount = 0;
@@ -234,8 +247,9 @@
     stopTimer();
     elapsedTime = endTime - startTime;
 
-    // Skipping is faster than typing, so only clean runs set best times.
-    if (skippedCount > 0) return;
+    // Skipping is faster than typing, so only clean runs set best times;
+    // practice rounds use a different set of characters.
+    if (skippedCount > 0 || practiceRound) return;
 
     const finalTime = endTime - startTime;
     const key = gameKey;
@@ -297,6 +311,9 @@
 
 <main class="game-container">
   <h1>Kana Speed Typing Game</h1>
+  {#if gameStarted && practiceRound}
+    <div class="practice-badge">Practice round: characters you missed</div>
+  {/if}
 
   {#if loading}
     <div class="loading">Loading kana data...</div>
@@ -424,7 +441,7 @@
   {:else if gameCompleted}
     <!-- Results Screen -->
     <div class="results-screen">
-      <h2>Game Complete! 🎉</h2>
+      <h2>{practiceRound ? 'Practice Complete!' : 'Game Complete! 🎉'}</h2>
 
       <div class="final-stats">
         <div class="stat">
@@ -447,6 +464,8 @@
 
       {#if isNewBest}
         <div class="new-best">🏆 New Best Time!</div>
+      {:else if practiceRound}
+        <div class="best-note">Practice rounds don't count toward best times.</div>
       {:else if skippedCount > 0}
         <div class="best-note">Runs with skipped characters don't count toward best times.</div>
       {/if}
@@ -466,7 +485,14 @@
       {/if}
 
       <div class="result-actions">
-        <button class="play-again-button" on:click={startGame}>Play Again</button>
+        {#if troubleKana.length > 0}
+          <button class="play-again-button" on:click={practiceMissed}>
+            Practice these ({troubleKana.length})
+          </button>
+        {/if}
+        <button class="play-again-button {troubleKana.length > 0 ? 'secondary' : ''}" on:click={startGame}>
+          {practiceRound ? 'Full Game' : 'Play Again'}
+        </button>
         <button class="home-button" on:click={resetGame}>Change Settings</button>
       </div>
     </div>

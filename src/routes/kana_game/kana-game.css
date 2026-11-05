@@ -550,3 +550,27 @@
   font-size: 0.85rem;
   color: var(--text-muted, #666);
 }
+
+.play-again-button.secondary {
+  background-color: var(--button-bg, #f3f3f3);
+  color: var(--text-color, #000);
+  border: 1px solid var(--button-border, #ccc);
+}
+
+.play-again-button.secondary:hover {
+  background-color: var(--button-hover-bg, #e0e0e0);
+}
+
+.practice-badge {
+  display: inline-block;
+  margin: -0.5rem 0 1rem;
+  padding: 0.3rem 0.8rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  background-color: rgba(255, 152, 0, 0.15);
+  color: #e65100;
+}
+
+:root.dark .practice-badge {
+  color: #ffb74d;
+}
