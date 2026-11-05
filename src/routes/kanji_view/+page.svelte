@@ -10,7 +10,7 @@
     getJlptLabel,
     JLPT_LEVEL_HELP
   } from '$lib/kanji';
-  import { createKanjiSearch } from '$lib/search';
+  import { createKanjiSearch, compareByCommonness } from '$lib/search';
   import { type SrsCard, cardStage, STAGE_LABELS, formatDue } from '$lib/srs';
   import { speakableReadings } from '$lib/speech';
   import SpeakButton from '$lib/components/SpeakButton.svelte';
@@ -22,7 +22,7 @@
   const SEARCH_DEBOUNCE_MS = 150;
   const MAX_BULK_ADD = 500; // matches the backend limit
 
-  let kanjiList: Kanji[] = [];
+  let kanjiList: Kanji[] = []; // most common first
   let search = createKanjiSearch([]);
   let filteredKanji: Kanji[] = [];
   let visibleCount = PAGE_SIZE;
@@ -124,7 +124,9 @@
     try {
       loading = true;
       error = '';
-      kanjiList = await invoke('get_all_kanji');
+      const loaded: Kanji[] = await invoke('get_all_kanji');
+      // Common kanji first (the dictionary order starts with rare ones)
+      kanjiList = loaded.sort(compareByCommonness);
       search = createKanjiSearch(kanjiList);
       filterKanji();
     } catch (err) {
@@ -662,6 +664,8 @@
       Showing {filteredKanji.length} kanji
       {#if appliedQuery}
         for "{appliedQuery}"
+      {:else if activeTab === 'all'}
+        (most common first)
       {:else if activeTab === 'frequent'}
         (Top 1000 most frequent)
       {:else if activeTab === 'grade'}
