@@ -6,6 +6,13 @@
   import { type SrsCard, type ReviewType, chooseReviewType } from '$lib/srs';
   import { matchReading } from '$lib/answers';
   import { getSessionLimits, getRecallReviews } from '$lib/preferences';
+  import {
+    type HeatmapDay,
+    type ReviewHistory,
+    buildHeatmap,
+    daysStudied,
+    longestStreak
+  } from '$lib/history';
   import { speakableReadings } from '$lib/speech';
   import SpeakButton from '$lib/components/SpeakButton.svelte';
   import './flashcards.css';
@@ -58,6 +65,10 @@
   let showAnswer = false;
   let submitting = false; // blocks double-clicks from reviewing a card twice
   let cardRequest = 0; // ignores kanji data that arrives after moving on
+
+  // Review history for the detailed statistics
+  let reviewHistory: ReviewHistory | null = null;
+  $: heatmapWeeks = reviewHistory ? buildHeatmap(reviewHistory, new Date()) : [];
 
   // Typed answers for reading questions
   let typeAnswers = false;
@@ -296,6 +307,36 @@
     goto('/');
   }
 
+  async function viewStats() {
+    currentView = 'stats';
+    try {
+      reviewHistory = await invoke('get_review_history');
+    } catch (err) {
+      console.error('Failed to load review history:', err);
+      reviewHistory = null;
+    }
+  }
+
+  function heatmapTitle(day: HeatmapDay): string {
+    const [year, month, date] = day.date.split('-').map(Number);
+    const label = new Date(year, month - 1, date).toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric'
+    });
+    if (day.reviews === 0) return `${label}: no reviews`;
+    const accuracy = Math.round((day.correct / day.reviews) * 100);
+    return `${label}: ${plural(day.reviews, 'review')} (${accuracy}% correct)`;
+  }
+
+  // Month name above the first week of each month
+  function monthLabel(weeks: HeatmapDay[][], index: number): string {
+    const month = (week: HeatmapDay[]) => week[0].date.slice(0, 7);
+    if (index > 0 && month(weeks[index]) === month(weeks[index - 1])) return '';
+    const [year, monthNumber] = weeks[index][0].date.split('-').map(Number);
+    return new Date(year, monthNumber - 1, 1).toLocaleDateString('en-US', { month: 'short' });
+  }
+
   function formatTimeSpent(ms: number): string {
     const seconds = Math.floor(ms / 1000);
     const minutes = Math.floor(seconds / 60);
@@ -487,7 +528,7 @@
         {/if}
 
         <!-- Detailed Stats Button -->
-        <button class="stats-button" on:click={() => currentView = 'stats'}>
+        <button class="stats-button" on:click={viewStats}>
           View Detailed Statistics
         </button>
       {/if}
@@ -730,6 +771,39 @@
             </div>
           </div>
         </div>
+
+        <!-- Review history heatmap -->
+        {#if reviewHistory}
+          <div class="stats-section">
+            <h2>Review History</h2>
+            <p class="heatmap-summary">
+              Studied on {plural(daysStudied(reviewHistory), 'day')} ·
+              Longest streak: {plural(longestStreak(reviewHistory), 'day')}
+            </p>
+            <div class="heatmap-scroll">
+              <div class="heatmap" role="img" aria-label="Reviews per day over the last 26 weeks">
+                {#each heatmapWeeks as week, i}
+                  <div class="heatmap-week">
+                    <div class="heatmap-month">{monthLabel(heatmapWeeks, i)}</div>
+                    {#each week as day}
+                      <div
+                        class="heatmap-day level-{day.level} {day.future ? 'future' : ''}"
+                        title={day.future ? '' : heatmapTitle(day)}
+                      ></div>
+                    {/each}
+                  </div>
+                {/each}
+              </div>
+            </div>
+            <div class="heatmap-legend" aria-hidden="true">
+              Less
+              {#each [0, 1, 2, 3, 4] as level}
+                <span class="heatmap-day level-{level}"></span>
+              {/each}
+              More
+            </div>
+          </div>
+        {/if}
 
         <!-- Weekly Progress Details -->
         <div class="stats-section">

@@ -1148,3 +1148,75 @@
 .kanji-character.recall-answer {
   margin-bottom: 0;
 }
+
+/* Review history heatmap */
+.heatmap-summary {
+  margin: 0 0 1rem;
+  color: var(--text-muted, #666);
+}
+
+.heatmap-scroll {
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+}
+
+.heatmap {
+  display: flex;
+  gap: 3px;
+  width: max-content;
+  margin: 0 auto; /* centered when it fits, scrolls from the left when not */
+}
+
+.heatmap-week {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.heatmap-month {
+  height: 1rem;
+  font-size: 0.7rem;
+  line-height: 1rem;
+  color: var(--text-muted, #666);
+  white-space: nowrap;
+  overflow: visible;
+  width: 13px;
+}
+
+.heatmap-day {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  border-radius: 3px;
+  background-color: var(--item-border, #ebedf0);
+}
+
+.heatmap-day.level-1 { background-color: #c6e48b; }
+.heatmap-day.level-2 { background-color: #7bc96f; }
+.heatmap-day.level-3 { background-color: #239a3b; }
+.heatmap-day.level-4 { background-color: #196127; }
+
+.heatmap-day.future {
+  background-color: transparent;
+}
+
+:root.dark .heatmap-day.level-0 { background-color: #2f2f2f; }
+:root.dark .heatmap-day.level-1 { background-color: #0e4429; }
+:root.dark .heatmap-day.level-2 { background-color: #006d32; }
+:root.dark .heatmap-day.level-3 { background-color: #26a641; }
+:root.dark .heatmap-day.level-4 { background-color: #39d353; }
+:root.dark .heatmap-day.future { background-color: transparent; }
+
+.heatmap-legend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-muted, #666);
+}
+
+.heatmap-legend .heatmap-day {
+  margin: 0 1px;
+}

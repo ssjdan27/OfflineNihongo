@@ -125,6 +125,14 @@ fn session_limit(limit: Option<u32>) -> usize {
 
 /// Starts a study session with at most `due_limit` reviews and `new_limit`
 /// new cards (20 each by default).
+/// Reviews per day ("YYYY-MM-DD" -> reviews and correct answers).
+#[tauri::command]
+async fn get_review_history(app: AppHandle) -> Result<ReviewHistory, String> {
+    let dir = data_dir(&app)?;
+    let _guard = lock_data();
+    load_history(&dir)
+}
+
 #[tauri::command]
 async fn start_review_session(
     app: AppHandle,
@@ -387,6 +395,7 @@ pub fn run() {
             save_best_time,
             get_best_times,
             get_study_stats,
+            get_review_history,
             start_review_session,
             submit_card_review,
             add_new_cards,
