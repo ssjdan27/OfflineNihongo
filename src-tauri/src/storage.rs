@@ -27,7 +27,8 @@ pub fn read_json_or_default<T: DeserializeOwned + Default>(path: &Path) -> Resul
         Ok(content) if content.trim().is_empty() => Ok(T::default()),
         Ok(content) => serde_json::from_str(&content).map_err(|e| {
             format!(
-                "Could not read {} ({}). The file has been left untouched.",
+                "Could not read {} ({}). The file has been left untouched; \
+                 you can import a backup or reset your flashcards in Settings.",
                 path.display(),
                 e
             )
