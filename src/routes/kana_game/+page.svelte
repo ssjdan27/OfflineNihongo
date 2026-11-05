@@ -14,6 +14,8 @@
   }
 
   type SoundType = 'seion' | 'dakuon' | 'handakuon';
+  type GameMode = 'hiragana' | 'katakana' | 'mixed';
+  type Complexity = 'basic' | 'combination' | 'mixed';
   const SOUND_TYPE_ORDER: SoundType[] = ['seion', 'dakuon', 'handakuon'];
 
   interface TroubleKana {
@@ -27,9 +29,9 @@
   let error = '';
 
   // Game settings
-  let gameMode: 'hiragana' | 'katakana' | 'mixed' = 'hiragana';
+  let gameMode: GameMode = 'hiragana';
   let soundTypes: SoundType[] = ['seion'];
-  let complexity: 'basic' | 'combination' | 'mixed' = 'basic';
+  let complexity: Complexity = 'basic';
   let gameStarted = false;
   let gameCompleted = false;
 
@@ -60,6 +62,10 @@
   let practiceRound = false;
 
   $: selectedCount = filterKana(kanaData, gameMode, soundTypes, complexity).length;
+  $: savedRecords = Object.entries(bestTimes)
+    .map(([key, time]) => ({ key, time, settings: parseGameKey(key) }))
+    .filter((record) => record.settings !== null)
+    .sort((a, b) => a.key.localeCompare(b.key));
   $: gameKey = generateGameKey(gameMode, soundTypes, complexity);
   $: attempts = correctCount + mistakeCount + skippedCount;
   $: accuracyText = attempts > 0 ? `${Math.round((correctCount / attempts) * 100)}%` : '—';
@@ -95,9 +101,9 @@
 
   function filterKana(
     data: KanaChar[],
-    mode: typeof gameMode,
+    mode: GameMode,
     types: SoundType[],
-    level: typeof complexity
+    level: Complexity
   ): KanaChar[] {
     return data.filter(
       (k) =>
@@ -111,12 +117,45 @@
   // combination of sound types gets its own key so best times for
   // different character sets don't overwrite each other.
   function generateGameKey(
-    mode: typeof gameMode,
+    mode: GameMode,
     types: SoundType[],
-    level: typeof complexity
+    level: Complexity
   ): string {
     const soundKey = SOUND_TYPE_ORDER.filter((t) => types.includes(t)).join('+');
     return `${mode}-${soundKey}-${level}`;
+  }
+
+  interface GameSettings {
+    mode: GameMode;
+    types: SoundType[];
+    level: Complexity;
+  }
+
+  // Inverse of generateGameKey. Keys from older versions used "mixed" for
+  // any combination of sound types; those can't be restored and are skipped.
+  function parseGameKey(key: string): GameSettings | null {
+    const [mode, soundKey, level] = key.split('-');
+    const types = (soundKey ?? '').split('+') as SoundType[];
+    const validMode = mode === 'hiragana' || mode === 'katakana' || mode === 'mixed';
+    const validLevel = level === 'basic' || level === 'combination' || level === 'mixed';
+    const validTypes = types.length > 0 && types.every((t) => SOUND_TYPE_ORDER.includes(t));
+    if (!validMode || !validLevel || !validTypes) return null;
+    return { mode, types, level };
+  }
+
+  const capitalize = (word: string) => word.charAt(0).toUpperCase() + word.slice(1);
+
+  function describeSettings(settings: GameSettings): string {
+    const mode = settings.mode === 'mixed' ? 'Hiragana + Katakana' : capitalize(settings.mode);
+    const types = settings.types.map(capitalize).join(' + ');
+    const level = settings.level === 'mixed' ? 'all' : settings.level;
+    return `${mode} · ${types} · ${level}`;
+  }
+
+  function useSettings(settings: GameSettings) {
+    gameMode = settings.mode;
+    soundTypes = [...settings.types];
+    complexity = settings.level;
   }
 
   function shuffleArray<T>(array: T[]): T[] {
@@ -419,6 +458,26 @@
             </div>
           {/if}
         </div>
+
+        {#if savedRecords.length > 0}
+          <details class="best-times">
+            <summary>Your best times ({savedRecords.length})</summary>
+            <ul>
+              {#each savedRecords as record}
+                <li>
+                  <button
+                    class="best-time-row {record.key === gameKey ? 'current' : ''}"
+                    on:click={() => record.settings && useSettings(record.settings)}
+                    title="Use these settings"
+                  >
+                    <span>{record.settings ? describeSettings(record.settings) : record.key}</span>
+                    <span class="best-time-value">{formatTime(record.time)}</span>
+                  </button>
+                </li>
+              {/each}
+            </ul>
+          </details>
+        {/if}
       </div>
 
       <button class="start-button" on:click={startGame} disabled={selectedCount === 0}>

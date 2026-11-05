@@ -574,3 +574,50 @@
 :root.dark .practice-badge {
   color: #ffb74d;
 }
+
+/* All saved best times; clicking one selects its settings */
+.best-times {
+  margin: -1rem 0 2rem;
+  text-align: left;
+}
+
+.best-times summary {
+  cursor: pointer;
+  color: var(--text-muted, #666);
+  font-size: 0.95rem;
+}
+
+.best-times ul {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.best-time-row {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+  text-align: left;
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #e0e0e0);
+  background-color: var(--section-bg, #fff);
+  color: var(--text-color, #000);
+  cursor: pointer;
+}
+
+.best-time-row:hover,
+.best-time-row.current {
+  border-color: var(--accent-color, #396cd8);
+}
+
+.best-time-value {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent-color, #396cd8);
+}
