@@ -899,3 +899,157 @@
 .add-cards-hint a {
   color: var(--link-color, #396cd8);
 }
+
+/* Study session: progress, typed answers, shortcuts */
+.session-header {
+  position: relative;
+}
+
+.progress-track {
+  height: 6px;
+  margin-top: 0.75rem;
+  border-radius: 3px;
+  background-color: var(--border-color, #e0e0e0);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background-color: var(--accent-color, #396cd8);
+  transition: width 0.3s ease;
+}
+
+.type-answers-toggle {
+  position: absolute;
+  top: 0.75rem;
+  right: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: var(--text-muted, #666);
+  cursor: pointer;
+}
+
+.typed-answer {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.typed-answer-input {
+  padding: 0.9rem 1.2rem;
+  font-size: 1.2rem;
+  min-width: 260px;
+  text-align: center;
+  border: 2px solid var(--border-color, #e0e0e0);
+  border-radius: 8px;
+  background-color: var(--section-bg, #fff);
+  color: var(--text-color, #000);
+}
+
+.typed-answer-input:focus {
+  outline: none;
+  border-color: var(--accent-color, #396cd8);
+}
+
+.typed-result {
+  margin-bottom: 1.25rem;
+  padding: 0.6rem 1rem;
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+.typed-result.correct {
+  color: #2e7d32;
+  background-color: rgba(76, 175, 80, 0.12);
+}
+
+.typed-result.incorrect {
+  color: #c62828;
+  background-color: rgba(244, 67, 54, 0.1);
+}
+
+:root.dark .typed-result.correct {
+  color: #81c784;
+}
+
+:root.dark .typed-result.incorrect {
+  color: #ef9a9a;
+}
+
+.shortcut-hint {
+  margin-top: 0.9rem;
+  font-size: 0.8rem;
+  color: var(--text-muted, #666);
+}
+
+.answer-layout {
+  display: flex;
+  gap: 2rem;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.answer-diagram {
+  flex-shrink: 0;
+  background-color: white;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #e0e0e0);
+  padding: 0.25rem;
+}
+
+.answer-diagram svg {
+  display: block;
+  width: 140px;
+  height: 140px;
+}
+
+.grade-key {
+  display: inline-block;
+  min-width: 1.2em;
+  padding: 0 0.25em;
+  margin-right: 0.2em;
+  border-radius: 3px;
+  background-color: rgba(255, 255, 255, 0.25);
+  font-size: 0.8em;
+}
+
+.grade-button.suggested {
+  outline: 3px solid var(--text-color, #000);
+  outline-offset: 2px;
+}
+
+/* Kanji missed during the session */
+.missed-kanji {
+  margin: 1.5rem auto;
+}
+
+.missed-kanji h3 {
+  color: var(--text-color, #000);
+  margin-bottom: 0.75rem;
+}
+
+.missed-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+}
+
+.missed-item {
+  font-family: var(--font-jp-display);
+  font-size: 2rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #e0e0e0);
+  background-color: var(--section-bg, #fff);
+  color: var(--accent-color, #396cd8);
+  text-decoration: none;
+}
+
+.missed-item:hover {
+  border-color: var(--accent-color, #396cd8);
+}

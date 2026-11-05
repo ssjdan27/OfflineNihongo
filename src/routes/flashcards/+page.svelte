@@ -1,34 +1,17 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { goto } from '$app/navigation';
   import { invoke } from '@tauri-apps/api/core';
   import { type KanjiLookup, getGradeLabel, getJlptLabel } from '$lib/kanji';
+  import { type SrsCard } from '$lib/srs';
+  import { matchReading } from '$lib/answers';
   import './flashcards.css';
 
   type KanjiCard = KanjiLookup;
 
-  interface SrsCard {
-    id: string;
-    character: string;
-    level: number;
-    interval: number;
-    ease_factor: number;
-    next_review: string; // ISO date string
-    total_reviews: number;
-    correct_reviews: number;
-    created_at: string;
-    last_reviewed: string | null;
-    streak: number;
-  }
-
   interface ReviewSession {
     cards_due: SrsCard[];
     cards_new: SrsCard[];
-    session_stats: {
-      total_reviews: number;
-      correct_answers: number;
-      session_time: number;
-    };
   }
 
   interface StudyStats {
@@ -45,28 +28,70 @@
     accuracy_this_week: number[];
   }
 
+  // A card graded "Again" comes back after this many other cards
+  const REQUEUE_GAP = 3;
+  const TYPE_ANSWERS_KEY = 'flashcards.typeAnswers';
+
   // App state
   let loading = true;
   let error = '';
   let currentView = 'dashboard'; // dashboard, study, stats
   let studyStats: StudyStats | null = null;
-  let reviewSession: ReviewSession | null = null;
-  let currentCard: SrsCard | null = null;
-  let currentKanjiData: KanjiCard | null = null;
-  let showAnswer = false;
+  let notice = '';
+
+  // Study session
+  let queue: SrsCard[] = []; // cards still to review, in order
+  let sessionReviews = 0;
+  let sessionCorrect = 0;
+  let missedCharacters: string[] = []; // graded Again or Hard this session
   let sessionStartTime = 0;
   let sessionEndTime = 0;
   let sessionComplete = false;
-  let notice = '';
+  let currentCard: SrsCard | null = null;
+  let currentKanjiData: KanjiCard | null = null;
+  let currentSvg = '';
+  let reviewType: 'meaning' | 'reading' = 'meaning';
+  let showAnswer = false;
   let submitting = false; // blocks double-clicks from reviewing a card twice
+  let cardRequest = 0; // ignores kanji data that arrives after moving on
 
-  $: remainingCards = (reviewSession?.cards_due.length || 0) + (reviewSession?.cards_new.length || 0);
-  let reviewType = 'meaning'; // 'meaning' or 'reading'
+  // Typed answers for reading questions
+  let typeAnswers = false;
+  let typedAnswer = '';
+  let matchedReading: string | null = null;
+  let answerInput: HTMLInputElement | null = null;
+
+  $: remainingCards = queue.length;
+  $: sessionProgress =
+    sessionReviews + remainingCards > 0 ? sessionReviews / (sessionReviews + remainingCards) : 0;
+  $: sessionAccuracy =
+    sessionReviews > 0 ? `${((sessionCorrect / sessionReviews) * 100).toFixed(1)}%` : 'N/A';
+  $: askTypedReading = typeAnswers && reviewType === 'reading';
+  // Grade suggested by a typed answer: Good if it matched, otherwise Again
+  $: suggestedGrade = askTypedReading && showAnswer ? (matchedReading ? 3 : 1) : 3;
 
   onMount(async () => {
+    try {
+      typeAnswers = localStorage.getItem(TYPE_ANSWERS_KEY) === 'true';
+    } catch {
+      typeAnswers = false;
+    }
     await loadStudyStats();
     loading = false;
   });
+
+  async function setTypeAnswers(enabled: boolean) {
+    typeAnswers = enabled;
+    try {
+      localStorage.setItem(TYPE_ANSWERS_KEY, String(enabled));
+    } catch {
+      // Not persisted; the setting still applies to this visit
+    }
+    if (enabled && reviewType === 'reading' && !showAnswer) {
+      await tick();
+      answerInput?.focus();
+    }
+  }
 
   async function loadStudyStats() {
     try {
@@ -81,52 +106,58 @@
     try {
       loading = true;
       notice = '';
-      reviewSession = await invoke('start_review_session', { sessionType });
-      if (reviewSession && (reviewSession.cards_due.length > 0 || reviewSession.cards_new.length > 0)) {
-        currentView = 'study';
+      const session: ReviewSession = await invoke('start_review_session', { sessionType });
+      const cards = [...session.cards_due, ...session.cards_new];
+      if (cards.length > 0) {
+        queue = cards;
+        sessionReviews = 0;
+        sessionCorrect = 0;
+        missedCharacters = [];
         sessionStartTime = Date.now();
         sessionEndTime = 0;
         sessionComplete = false;
+        currentView = 'study';
         await nextCard();
       } else {
         // Not fatal: stay on the dashboard and let the user add cards
         notice = 'No cards available for review. Add some new cards to get started.';
         await loadStudyStats();
       }
-      loading = false;
     } catch (err) {
       error = `Failed to start review session: ${err}`;
       console.error('Error starting review session:', err);
+    } finally {
       loading = false;
     }
   }
 
   async function nextCard() {
-    if (!reviewSession) return;
-    
-    const allCards = [...reviewSession.cards_due, ...reviewSession.cards_new];
-    if (allCards.length === 0) {
+    const request = ++cardRequest;
+    showAnswer = false;
+    typedAnswer = '';
+    matchedReading = null;
+    // Clear the previous card's data so its answer can't be shown for this one
+    currentKanjiData = null;
+    currentSvg = '';
+
+    if (queue.length === 0) {
       // Session complete: show the summary and refresh the stats for when
       // the user goes back to the dashboard
       currentCard = null;
-      currentKanjiData = null;
       sessionComplete = true;
       sessionEndTime = Date.now();
       await loadStudyStats();
       return;
     }
 
-    // Get next card (prioritize due cards)
-    currentCard = reviewSession.cards_due.length > 0
-      ? reviewSession.cards_due[0]
-      : reviewSession.cards_new[0];
-
-    // Clear the previous card's data so its answer can't be shown for this one
-    currentKanjiData = null;
-    showAnswer = false;
+    currentCard = queue[0];
+    const character = currentCard.character;
     try {
-      const kanji: KanjiCard = await invoke('get_kanji', { character: currentCard.character });
-      currentKanjiData = kanji;
+      const [kanji, svg] = await Promise.all([
+        invoke<KanjiCard>('get_kanji', { character }),
+        invoke<string>('get_kanji_svg', { character }).catch(() => '')
+      ]);
+      if (request !== cardRequest) return;
       // Randomly choose review type (60% meaning, 40% reading), but only ask
       // for something the dictionary has an answer for
       const hasReadings = Boolean(kanji.onyomi || kanji.kunyomi);
@@ -136,38 +167,55 @@
       } else {
         reviewType = hasReadings ? 'reading' : 'meaning';
       }
+      currentKanjiData = kanji;
+      currentSvg = svg;
+      if (typeAnswers && reviewType === 'reading') {
+        await tick();
+        answerInput?.focus();
+      }
     } catch (err) {
+      if (request !== cardRequest) return;
       console.error('Error loading kanji data:', err);
-      error = `Failed to load kanji data for ${currentCard.character}: ${err}`;
+      error = `Failed to load kanji data for ${character}: ${err}`;
     }
   }
 
+  function revealAnswer() {
+    if (!currentKanjiData || showAnswer) return;
+    if (askTypedReading) {
+      matchedReading = matchReading(typedAnswer, currentKanjiData.onyomi, currentKanjiData.kunyomi);
+    }
+    showAnswer = true;
+  }
+
   async function submitAnswer(grade: number) {
-    if (!currentCard || !reviewSession || submitting) return;
+    if (!currentCard || !showAnswer || submitting) return;
 
     submitting = true;
     try {
-      // Submit the answer and get updated card
-      const updatedCard = await invoke('submit_card_review', {
+      const updatedCard: SrsCard = await invoke('submit_card_review', {
         cardId: currentCard.id,
-        grade: grade,
-        reviewType: reviewType
+        grade,
+        reviewType
       });
 
-      // Update session stats
-      reviewSession.session_stats.total_reviews += 1;
+      sessionReviews += 1;
       if (grade >= 3) {
-        reviewSession.session_stats.correct_answers += 1;
+        sessionCorrect += 1;
+      } else if (!missedCharacters.includes(currentCard.character)) {
+        missedCharacters = [...missedCharacters, currentCard.character];
       }
 
-      // Remove the current card from the session
-      if (reviewSession.cards_due.includes(currentCard)) {
-        reviewSession.cards_due = reviewSession.cards_due.filter(c => c.id !== currentCard!.id);
-      } else {
-        reviewSession.cards_new = reviewSession.cards_new.filter(c => c.id !== currentCard!.id);
+      // Take the card off the front of the queue. A card graded "Again"
+      // comes back a few cards later so it's practiced before the session
+      // ends.
+      const rest = queue.slice(1);
+      if (grade === 1) {
+        const position = Math.min(REQUEUE_GAP, rest.length);
+        rest.splice(position, 0, updatedCard);
       }
+      queue = rest;
 
-      // Move to next card
       await nextCard();
     } catch (err) {
       error = `Failed to submit answer: ${err}`;
@@ -177,8 +225,28 @@
     }
   }
 
-  function showAnswerCard() {
-    showAnswer = true;
+  // Space/Enter reveal the answer and then accept the suggested grade;
+  // 1-4 grade the card.
+  function handleKeydown(event: KeyboardEvent) {
+    if (currentView !== 'study' || sessionComplete || !currentKanjiData) return;
+    if (event.ctrlKey || event.metaKey || event.altKey || event.repeat) return;
+    const typing = event.target instanceof HTMLInputElement;
+
+    if (!showAnswer) {
+      if (event.key === 'Enter' || (event.key === ' ' && !typing)) {
+        event.preventDefault();
+        revealAnswer();
+      }
+      return;
+    }
+
+    if (['1', '2', '3', '4'].includes(event.key)) {
+      event.preventDefault();
+      submitAnswer(Number(event.key));
+    } else if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      submitAnswer(suggestedGrade);
+    }
   }
 
   async function addNewCards(count: number) {
@@ -204,6 +272,7 @@
   // Reload the stats too: reviews done in an unfinished session already
   // changed the counts.
   function goToDashboard() {
+    cardRequest++;
     currentView = 'dashboard';
     loadStudyStats();
   }
@@ -221,6 +290,10 @@
     return `${seconds}s`;
   }
 
+  function plural(count: number, word: string): string {
+    return `${count} ${count === 1 ? word : word + 's'}`;
+  }
+
   // Label a "YYYY-MM-DD" date from the backend with its weekday name.
   function weekdayLabel(dateStr: string | undefined, style: 'short' | 'long'): string {
     if (!dateStr) return '';
@@ -230,7 +303,6 @@
     if (date.toDateString() === today.toDateString()) return 'Today';
     return date.toLocaleDateString('en-US', { weekday: style });
   }
-
 </script>
 
 <div class="nav-bar">
@@ -321,7 +393,7 @@
         <div class="quick-stats">
           <div class="quick-stat">
             <span class="label">Daily Streak:</span>
-            <span class="value">{studyStats.daily_streak} days</span>
+            <span class="value">{plural(studyStats.daily_streak, 'day')}</span>
           </div>
           <div class="quick-stat">
             <span class="label">Total Reviews:</span>
@@ -375,21 +447,29 @@
         <div class="session-header">
           <div class="session-progress">
             <div class="progress-info">
-              Remaining: {remainingCards} {remainingCards === 1 ? 'card' : 'cards'}
+              {plural(remainingCards, 'card')} left
             </div>
             <div class="session-stats">
-              Reviews: {reviewSession?.session_stats.total_reviews || 0} | 
-              Accuracy: {(reviewSession?.session_stats.total_reviews || 0) > 0 ? 
-                (((reviewSession?.session_stats.correct_answers || 0) / (reviewSession?.session_stats.total_reviews || 1)) * 100).toFixed(1) + '%' : 
-                'N/A'}
+              Reviews: {sessionReviews} | Accuracy: {sessionAccuracy}
             </div>
           </div>
+          <div class="progress-track" aria-hidden="true">
+            <div class="progress-fill" style="width: {sessionProgress * 100}%"></div>
+          </div>
+          <label class="type-answers-toggle">
+            <input
+              type="checkbox"
+              checked={typeAnswers}
+              on:change={(e) => setTypeAnswers(e.currentTarget.checked)}
+            />
+            Type readings
+          </label>
         </div>
 
         <div class="study-card">
           <div class="card-front">
             <div class="kanji-character">{currentCard.character}</div>
-            
+
             {#if reviewType === 'meaning'}
               <div class="question">What does this kanji mean?</div>
             {:else}
@@ -397,35 +477,72 @@
             {/if}
 
             {#if !showAnswer}
-              <button class="show-answer-button" on:click={showAnswerCard}>
-                Show Answer
-              </button>
+              {#if askTypedReading}
+                <form class="typed-answer" on:submit|preventDefault={revealAnswer}>
+                  <input
+                    bind:this={answerInput}
+                    bind:value={typedAnswer}
+                    class="typed-answer-input"
+                    placeholder="Type a reading (romaji or kana)"
+                    autocomplete="off"
+                    autocapitalize="off"
+                    spellcheck="false"
+                  />
+                  <button type="submit" class="show-answer-button">Check</button>
+                </form>
+              {:else}
+                <button class="show-answer-button" on:click={revealAnswer}>
+                  Show Answer
+                </button>
+              {/if}
+              <div class="shortcut-hint">
+                {askTypedReading ? 'Enter' : 'Space'} to reveal · 1–4 to grade
+              </div>
             {:else}
               <div class="answer-section">
-                {#if reviewType === 'meaning'}
-                  <div class="answer">
-                    <h4>Meanings:</h4>
-                    <div class="meanings-list">
-                      {#each currentKanjiData.meanings as meaning}
-                        <span class="meaning-tag">{meaning}</span>
-                      {/each}
-                    </div>
-                  </div>
-                {:else}
-                  <div class="answer">
-                    <h4>Readings:</h4>
-                    {#if currentKanjiData.onyomi}
-                      <div class="reading-item">
-                        <span class="reading-label">On'yomi:</span> {currentKanjiData.onyomi}
-                      </div>
-                    {/if}
-                    {#if currentKanjiData.kunyomi}
-                      <div class="reading-item">
-                        <span class="reading-label">Kun'yomi:</span> {currentKanjiData.kunyomi}
-                      </div>
+                {#if askTypedReading}
+                  <div class="typed-result {matchedReading ? 'correct' : 'incorrect'}">
+                    {#if matchedReading}
+                      ✓ "{typedAnswer.trim()}" matches {matchedReading}
+                    {:else if typedAnswer.trim()}
+                      ✗ "{typedAnswer.trim()}" isn't one of the readings
+                    {:else}
+                      No answer typed
                     {/if}
                   </div>
                 {/if}
+
+                <div class="answer-layout">
+                  <div class="answer">
+                    {#if reviewType === 'meaning'}
+                      <h4>Meanings:</h4>
+                      <div class="meanings-list">
+                        {#each currentKanjiData.meanings as meaning}
+                          <span class="meaning-tag">{meaning}</span>
+                        {/each}
+                      </div>
+                    {:else}
+                      <h4>Readings:</h4>
+                      {#if currentKanjiData.onyomi}
+                        <div class="reading-item">
+                          <span class="reading-label">On'yomi:</span> {currentKanjiData.onyomi}
+                        </div>
+                      {/if}
+                      {#if currentKanjiData.kunyomi}
+                        <div class="reading-item">
+                          <span class="reading-label">Kun'yomi:</span> {currentKanjiData.kunyomi}
+                        </div>
+                      {/if}
+                    {/if}
+                  </div>
+
+                  {#if currentSvg}
+                    <!-- Stroke order; animated diagrams draw themselves when shown -->
+                    <div class="answer-diagram" title="Stroke order">
+                      {@html currentSvg}
+                    </div>
+                  {/if}
+                </div>
 
                 <!-- Additional Info -->
                 <div class="additional-info">
@@ -446,18 +563,21 @@
 
                 <!-- Grading Buttons -->
                 <div class="grade-buttons">
-                  <button class="grade-button fail" disabled={submitting} on:click={() => submitAnswer(1)}>
-                    Again<br><span class="grade-desc">Complete blackout</span>
+                  <button class="grade-button fail {suggestedGrade === 1 ? 'suggested' : ''}" disabled={submitting} on:click={() => submitAnswer(1)}>
+                    <span class="grade-key">1</span> Again<br><span class="grade-desc">Complete blackout</span>
                   </button>
                   <button class="grade-button hard" disabled={submitting} on:click={() => submitAnswer(2)}>
-                    Hard<br><span class="grade-desc">Incorrect but remembered</span>
+                    <span class="grade-key">2</span> Hard<br><span class="grade-desc">Incorrect but remembered</span>
                   </button>
-                  <button class="grade-button good" disabled={submitting} on:click={() => submitAnswer(3)}>
-                    Good<br><span class="grade-desc">Correct with effort</span>
+                  <button class="grade-button good {suggestedGrade === 3 ? 'suggested' : ''}" disabled={submitting} on:click={() => submitAnswer(3)}>
+                    <span class="grade-key">3</span> Good<br><span class="grade-desc">Correct with effort</span>
                   </button>
                   <button class="grade-button easy" disabled={submitting} on:click={() => submitAnswer(4)}>
-                    Easy<br><span class="grade-desc">Perfect recall</span>
+                    <span class="grade-key">4</span> Easy<br><span class="grade-desc">Perfect recall</span>
                   </button>
+                </div>
+                <div class="shortcut-hint">
+                  Space/Enter: {suggestedGrade === 1 ? 'Again' : 'Good'} · "Again" cards come back later in this session
                 </div>
               </div>
             {/if}
@@ -471,21 +591,27 @@
           <div class="session-summary">
             <div class="summary-stat">
               <span class="stat-label">Reviews Completed:</span>
-              <span class="stat-value">{reviewSession?.session_stats.total_reviews || 0}</span>
+              <span class="stat-value">{sessionReviews}</span>
             </div>
             <div class="summary-stat">
               <span class="stat-label">Accuracy:</span>
-              <span class="stat-value">
-                {(reviewSession?.session_stats.total_reviews || 0) > 0 ? 
-                  (((reviewSession?.session_stats.correct_answers || 0) / (reviewSession?.session_stats.total_reviews || 1)) * 100).toFixed(1) + '%' : 
-                  'N/A'}
-              </span>
+              <span class="stat-value">{sessionAccuracy}</span>
             </div>
             <div class="summary-stat">
               <span class="stat-label">Time Spent:</span>
               <span class="stat-value">{formatTimeSpent((sessionEndTime || Date.now()) - sessionStartTime)}</span>
             </div>
           </div>
+          {#if missedCharacters.length > 0}
+            <div class="missed-kanji">
+              <h3>Missed this session</h3>
+              <div class="missed-list">
+                {#each missedCharacters as character}
+                  <a class="missed-item" href={`/kanji_view?kanji=${encodeURIComponent(character)}`} title="Open in the Kanji Database">{character}</a>
+                {/each}
+              </div>
+            </div>
+          {/if}
           <button class="continue-button" on:click={goToDashboard}>
             Back to Dashboard
           </button>
@@ -519,7 +645,7 @@
             </div>
             <div class="progress-item">
               <div class="progress-label">Daily Streak</div>
-              <div class="progress-value">{studyStats.daily_streak} days</div>
+              <div class="progress-value">{plural(studyStats.daily_streak, 'day')}</div>
             </div>
             <div class="progress-item">
               <div class="progress-label">Overall Accuracy</div>
@@ -661,3 +787,5 @@
     </div>
   {/if}
 </main>
+
+<svelte:window on:keydown={handleKeydown} />
